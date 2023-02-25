@@ -3,8 +3,11 @@
     "description": "Create BOT to monitor the websites of my clients",
     "autoload": {
         "psr-4": {
-            "Puleeno\\Bot\\WebMonitor\\": "src/"
-        }
+            "Puleeno\\Bot\\WebMonitor\\": "includes/"
+        },
+        "files": [
+            "./web-monitor-bot.php"
+        ]
     },
     "authors": [
         {
@@ -12,6 +15,9 @@
             "email": "puleeno@gmail.com"
         }
     ],
-    "require": {},
-    "minimum-stability": "dev"
+    "require": {
+        "irazasyed/telegram-bot-sdk": "^2.0"
+    },
+    "minimum-stability": "dev",
+    "license": "GPL-3.0-only"
 }
