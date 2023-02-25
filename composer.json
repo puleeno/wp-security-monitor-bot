@@ -1,0 +1,17 @@
+{
+    "name": "puleeno/web-monitor-bot",
+    "description": "Create BOT to monitor the websites of my clients",
+    "autoload": {
+        "psr-4": {
+            "Puleeno\\Bot\\WebMonitor\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Puleeno Nguyen",
+            "email": "puleeno@gmail.com"
+        }
+    ],
+    "require": {},
+    "minimum-stability": "dev"
+}
