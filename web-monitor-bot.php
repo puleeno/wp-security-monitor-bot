@@ -3,24 +3,37 @@
 /**
  * Plugin Name: Web Monitor Bot
  * Author: Puleeno Nguyen
+ * Description: Create BOT to monitor the WordPress websites of my clients
  * Author URI: https://puleeno.com
  * Version: 1.0.0
  */
 
-class Puleeno_Web_Monitor_Bot {
-    protected static $loaded = false;
-
-    protected function __construct()
+if (!class_exists('Puleeno_Web_Monitor_Bot')) {
+    class Puleeno_Web_Monitor_Bot
     {
-    }
+        protected static $instance;
 
-    public static function getInstance() {
-        if (static::$loaded) {
-            return;
+        protected function __construct()
+        {
+            $this->loadComposer();
         }
 
-        // Bootstrap here
-    }
-}
+        public static function getInstance()
+        {
+            if (is_null(static::$instance)) {
+                static::$instance = new static();
+            }
+            return static::$instance;
+        }
 
-Puleeno_Web_Monitor_Bot::getInstance();
+        public function loadComposer()
+        {
+            $autloader = sprintf('%s/vendor/autoload.php', dirname(__FILE__));
+            if (file_exists($autloader)) {
+                require_once $autloader;
+            }
+        }
+    }
+
+    Puleeno_Web_Monitor_Bot::getInstance();
+}
