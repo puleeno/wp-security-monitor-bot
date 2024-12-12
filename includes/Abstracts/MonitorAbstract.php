@@ -1,7 +1,7 @@
 <?php
-namespace Puleeno\Bot\WebMonitor\Abstracts;
+namespace Puleeno\SecurityBot\WebMonitor\Abstracts;
 
-use Puleeno\Bot\WebMonitor\Interfaces\MonitorInterface;
+use Puleeno\SecurityBot\WebMonitor\Interfaces\MonitorInterface;
 
 abstract class MonitorAbstract implements MonitorInterface
 {

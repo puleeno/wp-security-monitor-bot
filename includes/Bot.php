@@ -1,12 +1,12 @@
 <?php
-namespace Puleeno\Bot\WebMonitor;
+namespace Puleeno\SecurityBot\WebMonitor;
 
 class Bot
 {
     protected static $instance;
 
     /**
-     * @var \Puleeno\Bot\WebMonitor\Interfaces\ChannelInterface[]
+     * @var \Puleeno\SecurityBot\WebMonitor\Interfaces\ChannelInterface[]
      */
     protected $channels = [];
 

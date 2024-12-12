@@ -3,11 +3,11 @@
     "description": "Create BOT to monitor the websites of my clients",
     "autoload": {
         "psr-4": {
-            "Puleeno\\Bot\\WebMonitor\\": "includes/",
-            "Puleeno\\Bot\\WebMonitor\\Admin\\": "admin/"
+            "Puleeno\\SecurityBot\\WebMonitor\\": "includes/",
+            "Puleeno\\SecurityBot\\WebMonitor\\Admin\\": "admin/"
         },
         "files": [
-            "./web-monitor-bot.php"
+            "./wp-security-monitor-bot.php"
         ]
     },
     "authors": [

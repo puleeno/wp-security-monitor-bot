@@ -1,5 +1,5 @@
 <?php
-namespace Puleeno\Bot\WebMonitor\Channels;
+namespace Puleeno\SecurityBot\WebMonitor\Channels;
 
 class TelegramChannel
 {

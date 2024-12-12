@@ -1,5 +1,5 @@
 <?php
-namespace Puleeno\Bot\WebMonitor\Interfaces;
+namespace Puleeno\SecurityBot\WebMonitor\Interfaces;
 
 interface ChannelInterface
 {
