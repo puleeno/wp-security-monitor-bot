@@ -8,8 +8,8 @@
  * Version: 1.0.0
  */
 
-if (!class_exists('Puleeno_Web_Monitor_Bot')) {
-    class Puleeno_Web_Monitor_Bot
+if (!class_exists('WP_Security_Monitor_Bot')) {
+    class WP_Security_Monitor_Bot
     {
         protected static $instance;
 
@@ -35,5 +35,5 @@ if (!class_exists('Puleeno_Web_Monitor_Bot')) {
         }
     }
 
-    Puleeno_Web_Monitor_Bot::getInstance();
+    WP_Security_Monitor_Bot::getInstance();
 }
