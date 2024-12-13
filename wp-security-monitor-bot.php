@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: Web Monitor Bot
+ * Plugin Name: WP Security Monitor Bot
  * Author: Puleeno Nguyen
  * Description: Create BOT to monitor the WordPress websites of my clients
  * Author URI: https://puleeno.com
