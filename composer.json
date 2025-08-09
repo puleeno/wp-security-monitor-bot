@@ -5,10 +5,7 @@
         "psr-4": {
             "Puleeno\\SecurityBot\\WebMonitor\\": "includes/",
             "Puleeno\\SecurityBot\\WebMonitor\\Admin\\": "admin/"
-        },
-        "files": [
-            "./wp-security-monitor-bot.php"
-        ]
+        }
     },
     "authors": [
         {
