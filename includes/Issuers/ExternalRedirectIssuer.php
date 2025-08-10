@@ -198,9 +198,8 @@ class ExternalRedirectIssuer implements IssuerInterface
                             'redirect_url' => $option->option_value,
                             'source_file' => 'database',
                             'debug_info' => ForensicHelper::createForensicData(
-                                $this->getName(),
-                                IssuerType::SCAN,
-                                $debugContext
+                                0,
+                                $this->getName()
                             )
                         ];
 
@@ -235,9 +234,8 @@ class ExternalRedirectIssuer implements IssuerInterface
                 'source_file' => 'post_content',
                 'post_id' => $post->ID,
                 'debug_info' => ForensicHelper::createForensicData(
-                    $this->getName(),
-                    IssuerType::SCAN,
-                    $debugContext
+                    0,
+                    $this->getName()
                 )
                 ];
             }
@@ -286,9 +284,8 @@ class ExternalRedirectIssuer implements IssuerInterface
                                 'type' => 'suspicious_hook',
                                 'source_file' => 'wordpress_hooks',
                                 'debug_info' => ForensicHelper::createForensicData(
-                                    $this->getName(),
-                                    IssuerType::TRIGGER,
-                                    $debugContext
+                                    0,
+                                    $this->getName()
                                 )
                             ];
                         }
@@ -377,9 +374,8 @@ class ExternalRedirectIssuer implements IssuerInterface
                             'domain' => $domain,
                             'redirect_url' => $redirectUrl,
                             'debug_info' => ForensicHelper::createForensicData(
-                                $this->getName(),
-                                IssuerType::SCAN,
-                                $debugContext
+                                0,
+                                $this->getName()
                             )
                         ];
 

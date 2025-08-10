@@ -64,17 +64,17 @@ class IssueManager
 
         if ($existingId) {
             // Cập nhật existing issue
-            $updated = $wpdb->update(
-                $this->issuesTable,
-                [
-                    'last_detected' => $now,
-                    'detection_count' => $wpdb->prepare('detection_count + 1'),
-                    'updated_at' => $now
-                ],
-                ['id' => $existingId],
-                ['%s', '%s', '%s'],
-                ['%d']
-            );
+            // Sử dụng raw SQL để tăng detection_count
+            $wpdb->query($wpdb->prepare(
+                "UPDATE {$this->issuesTable}
+                 SET last_detected = %s,
+                     detection_count = detection_count + 1,
+                     updated_at = %s
+                 WHERE id = %d",
+                $now, $now, $existingId
+            ));
+
+            $updated = $wpdb->rows_affected > 0;
 
             return $updated ? $existingId : false;
         } else {
@@ -88,6 +88,7 @@ class IssueManager
                 'description' => $this->extractDescription($issueData),
                 'details' => $this->extractDetails($issueData),
                 'raw_data' => json_encode($issueData),
+                'backtrace' => $this->extractBacktrace($issueData),
                 'file_path' => $this->extractFilePath($issueData),
                 'ip_address' => $this->extractIPAddress($issueData),
                 'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? null,
@@ -192,8 +193,8 @@ class IssueManager
 
         // Decode JSON fields
         foreach ($issues as &$issue) {
-            $issue['raw_data'] = json_decode($issue['raw_data'], true);
-            $issue['metadata'] = json_decode($issue['metadata'], true);
+            $issue['raw_data'] = is_array($issue['raw_data']) ? $issue['raw_data'] : json_decode($issue['raw_data'], true);
+            $issue['metadata'] = is_array($issue['metadata']) ? $issue['metadata'] : json_decode($issue['metadata'], true);
         }
 
         return [
@@ -430,14 +431,14 @@ class IssueManager
 
             if ($isMatch) {
                 // Cập nhật usage count
-                $wpdb->update(
-                    $this->ignoreTable,
-                    [
-                        'usage_count' => $wpdb->prepare('usage_count + 1'),
-                        'last_used_at' => current_time('mysql')
-                    ],
-                    ['id' => $rule['id']]
-                );
+                // Sử dụng raw SQL để tăng usage_count
+                $wpdb->query($wpdb->prepare(
+                    "UPDATE {$this->ignoreTable}
+                     SET usage_count = usage_count + 1,
+                         last_used_at = %s
+                     WHERE id = %d",
+                    current_time('mysql'), $rule['id']
+                ));
 
                 return true;
             }
@@ -481,6 +482,48 @@ class IssueManager
     private function extractDetails(array $issueData): string
     {
         return $issueData['details'] ?? json_encode($issueData);
+    }
+
+    /**
+     * Lấy backtrace từ issue data
+     *
+     * @param array $issueData
+     * @return string|null
+     */
+    private function extractBacktrace(array $issueData): ?string
+    {
+        // Nếu có backtrace trong issue data
+        if (isset($issueData['backtrace'])) {
+            return is_string($issueData['backtrace']) ? $issueData['backtrace'] : json_encode($issueData['backtrace']);
+        }
+
+        // Nếu không có, tạo backtrace từ current stack
+        if (function_exists('debug_backtrace')) {
+            $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 10);
+
+            // Lọc bỏ các frames không cần thiết
+            $filteredBacktrace = array_filter($backtrace, function($frame) {
+                // Loại bỏ các frames từ IssueManager và các class internal
+                $excludeClasses = ['IssueManager', 'Bot', 'RealtimeRedirectIssuer'];
+                $excludeFunctions = ['recordIssue', 'handleSuspiciousRedirect'];
+
+                if (isset($frame['class']) && in_array($frame['class'], $excludeClasses)) {
+                    return false;
+                }
+
+                if (isset($frame['function']) && in_array($frame['function'], $excludeFunctions)) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            if (!empty($filteredBacktrace)) {
+                return json_encode($filteredBacktrace, JSON_PRETTY_PRINT);
+            }
+        }
+
+        return null;
     }
 
     private function extractFilePath(array $issueData): ?string
@@ -574,5 +617,16 @@ class IssueManager
     public function cleanup(int $days = 90): array
     {
         return Schema::cleanupOldData($days);
+    }
+
+    /**
+     * Lấy ID của issue vừa được insert
+     *
+     * @return int|null
+     */
+    public function getLastInsertId(): ?int
+    {
+        global $wpdb;
+        return $wpdb->insert_id;
     }
 }

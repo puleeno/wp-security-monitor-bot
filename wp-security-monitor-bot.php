@@ -8,6 +8,12 @@
  * Version: 1.0.0
  */
 
+// Load Composer autoloader ngay lập tức
+$autoloader = sprintf('%s/vendor/autoload.php', dirname(__FILE__));
+if (file_exists($autoloader)) {
+    require_once $autoloader;
+}
+
 if (!class_exists('WP_Security_Monitor_Bot')) {
     class WP_Security_Monitor_Bot
     {
@@ -15,7 +21,7 @@ if (!class_exists('WP_Security_Monitor_Bot')) {
 
         protected function __construct()
         {
-            $this->loadComposer();
+            // Composer autoloader đã được load ở trên
         }
 
         public static function getInstance()
@@ -24,14 +30,6 @@ if (!class_exists('WP_Security_Monitor_Bot')) {
                 static::$instance = new static();
             }
             return static::$instance;
-        }
-
-        public function loadComposer()
-        {
-            $autloader = sprintf('%s/vendor/autoload.php', dirname(__FILE__));
-            if (file_exists($autloader)) {
-                require_once $autloader;
-            }
         }
     }
 

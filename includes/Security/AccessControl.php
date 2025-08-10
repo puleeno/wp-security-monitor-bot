@@ -36,7 +36,7 @@ class AccessControl
     /**
      * Session timeout (seconds)
      */
-    const SESSION_TIMEOUT = 3600; // 1 hour
+    const SESSION_TIMEOUT = 86400; // 24 hours
 
     /**
      * Max failed attempts before lockout
@@ -172,8 +172,8 @@ class AccessControl
             wp_die('Access denied: IP address not whitelisted for security operations.', 'Access Denied', ['response' => 403]);
         }
 
-        // Check session timeout
-        if (!self::isSessionValid()) {
+        // Check session timeout - only for sensitive operations
+        if (self::isSensitiveOperation() && !self::isSessionValid()) {
             self::logSecurityEvent('session_timeout', [
                 'user_id' => get_current_user_id(),
                 'page' => $_GET['page'] ?? ''
@@ -194,8 +194,10 @@ class AccessControl
             wp_die('Account temporarily locked due to security policy.', 'Account Locked', ['response' => 423]);
         }
 
-        // Update session activity
-        self::updateSessionActivity();
+        // Update session activity - only when needed
+        if (self::shouldUpdateSession()) {
+            self::updateSessionActivity();
+        }
     }
 
     /**
@@ -207,6 +209,51 @@ class AccessControl
     {
         $page = $_GET['page'] ?? '';
         return strpos($page, 'wp-security-monitor') === 0;
+    }
+
+    /**
+     * Check if current operation is sensitive (requires strict session validation)
+     *
+     * @return bool
+     */
+    private static function isSensitiveOperation(): bool
+    {
+        $page = $_GET['page'] ?? '';
+        $action = $_GET['action'] ?? '';
+
+        // Only require strict session validation for sensitive operations
+        $sensitivePages = [
+            'wp-security-monitor-access-control',  // Access control settings
+            'wp-security-monitor-credentials',     // Credential management
+        ];
+
+        $sensitiveActions = [
+            'delete_issue',
+            'ignore_issue',
+            'clear_encrypted_data',
+            'test_channel',
+            'run_check'
+        ];
+
+        return in_array($page, $sensitivePages) || in_array($action, $sensitiveActions);
+    }
+
+    /**
+     * Check if session should be updated (throttled to avoid excessive DB writes)
+     *
+     * @return bool
+     */
+    private static function shouldUpdateSession(): bool
+    {
+        if (!is_user_logged_in()) {
+            return false;
+        }
+
+        $userId = get_current_user_id();
+        $lastUpdate = get_user_meta($userId, 'wp_security_monitor_session_last_update', true);
+
+        // Only update session every 5 minutes to reduce DB load
+        return !$lastUpdate || (time() - $lastUpdate) >= 300;
     }
 
     /**
@@ -317,7 +364,10 @@ class AccessControl
     {
         if (is_user_logged_in()) {
             $userId = get_current_user_id();
-            update_user_meta($userId, 'wp_security_monitor_last_activity', time());
+            $currentTime = time();
+
+            update_user_meta($userId, 'wp_security_monitor_last_activity', $currentTime);
+            update_user_meta($userId, 'wp_security_monitor_session_last_update', $currentTime);
         }
     }
 

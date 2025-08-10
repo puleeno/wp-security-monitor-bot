@@ -13,6 +13,7 @@ Plugin WordPress để giám sát bảo mật website và gửi cảnh báo tự
 - **Email**: Gửi báo cáo chi tiết qua email với HTML template đẹp
 - **🆕 Slack**: Rich notifications qua Slack webhooks với attachments và formatting
 - **🆕 Log File**: Ghi detailed logs với rotation, compression và audit trail
+- **🆕 Test Gửi Tin Nhắn**: Nút test riêng biệt cho từng kênh để kiểm tra khả năng gửi tin nhắn thực tế
 - **Extensible**: Dễ dàng thêm các kênh khác (SMS, Discord, Microsoft Teams...)
 
 ### 🔍 Giám sát bảo mật
@@ -310,6 +311,32 @@ class SlackChannel extends Channel
 }
 ```
 
+## 🧪 Test Gửi Tin Nhắn
+
+### Tính năng mới
+Plugin hiện tại có **2 loại test riêng biệt** cho mỗi kênh thông báo:
+
+1. **🔗 Test Kết Nối**: Kiểm tra khả năng kết nối với service (Telegram API, Email server, Slack webhook, Log directory)
+2. **📤 Test Gửi Tin Nhắn**: Gửi tin nhắn test thực tế để kiểm tra khả năng gửi tin nhắn
+
+### Cách sử dụng
+1. Vào **WordPress Admin** → **Puleeno Security** → **Cài đặt**
+2. Trong mỗi kênh (Telegram, Email, Slack, Log), bạn sẽ thấy 2 nút:
+   - **🔗 Test kết nối**: Kiểm tra cấu hình và kết nối
+   - **📤 Gửi tin nhắn test**: Gửi tin nhắn test thực tế
+
+### Lợi ích
+- **Phân biệt rõ ràng** giữa vấn đề kết nối và vấn đề gửi tin nhắn
+- **Test thực tế** khả năng gửi tin nhắn của bot
+- **Debug dễ dàng** khi có vấn đề với một kênh cụ thể
+- **Xác nhận** bot hoạt động đúng trước khi deploy production
+
+### Ví dụ sử dụng
+- **Telegram**: Test kết nối → OK, Test gửi tin nhắn → Nhận được tin nhắn test
+- **Email**: Test kết nối → OK, Test gửi tin nhắn → Nhận được email test
+- **Slack**: Test kết nối → OK, Test gửi tin nhắn → Nhận được message trong Slack
+- **Log**: Test kết nối → OK, Test gửi tin nhắn → File log được tạo với nội dung test
+
 ## 🐛 Troubleshooting
 
 ### Telegram không nhận được tin nhắn
@@ -363,6 +390,7 @@ class SlackChannel extends Channel
 - **🆕 File Hash Ignore System**: Ignore files đã được admin kiểm tra
 - **🆕 Slack Channel**: Rich notifications với attachments và formatting
 - **🆕 Log File Channel**: Structured logging với rotation và compression
+- **🆕 Test Gửi Tin Nhắn**: Nút test riêng biệt cho từng kênh để kiểm tra khả năng gửi tin nhắn thực tế
 - **🔧 Enhanced Debug Info**: Detailed tracing cho tất cả issues
 - **🎯 Better Issue Management**: More granular control và filtering
 

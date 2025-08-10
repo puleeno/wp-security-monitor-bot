@@ -182,25 +182,45 @@ class EmailChannel extends Channel
     /**
      * Test gửi email
      *
-     * @return bool
+     * @return array
      */
-    public function testConnection(): bool
+    public function testConnection(): array
     {
-        $testData = [
-            'issuer' => 'Email Test',
-            'timestamp' => time(),
-            'issues' => [
-                [
-                    'message' => 'Đây là email test từ Security Monitor Bot',
-                    'details' => 'Email được gửi để kiểm tra cấu hình hoạt động'
+        try {
+            $testData = [
+                'issuer' => 'Email Test',
+                'timestamp' => time(),
+                'issues' => [
+                    [
+                        'message' => 'Đây là email test từ Security Monitor Bot',
+                        'details' => 'Email được gửi để kiểm tra cấu hình hoạt động'
+                    ]
                 ]
-            ]
-        ];
+            ];
 
-        $testMessage = "🤖 *Test email thành công!*\n\n";
-        $testMessage .= "Bot Security Monitor đã được cấu hình và có thể gửi email.\n";
-        $testMessage .= "⏰ Thời gian test: " . date('d/m/Y H:i:s');
+            $testMessage = "🤖 *Test email thành công!*\n\n";
+            $testMessage .= "Bot Security Monitor đã được cấu hình và có thể gửi email.\n";
+            $testMessage .= "⏰ Thời gian test: " . date('d/m/Y H:i:s');
 
-        return $this->send($testMessage, $testData);
+            $result = $this->send($testMessage, $testData);
+
+            if ($result) {
+                return [
+                    'success' => true,
+                    'message' => 'Test email sent successfully!'
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to send test email. Check email configuration.'
+                ];
+            }
+
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Email test failed: ' . $e->getMessage()
+            ];
+        }
     }
 }

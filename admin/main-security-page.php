@@ -33,13 +33,38 @@ try {
 $twoFactorStatus = TwoFactorAuth::isEnabled(get_current_user_id());
 $ipWhitelistActive = !empty(get_option('wp_security_monitor_ip_whitelist', []));
 
-// Get channels status - estimate based on config
+// Get channels status - estimate based on actual channel availability
+$emailConfig = get_option('wp_security_monitor_email_config', []);
+$logConfig = get_option('wp_security_monitor_log_config', []);
+
+// Debug: Check individual channel statuses
+$telegramEnabled = !empty(CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_TOKEN)) &&
+                   !empty(CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_CHAT_ID)) &&
+                   get_option('wp_security_monitor_telegram_enabled', false);
+
+$emailEnabled = !empty($emailConfig['to']) && (isset($emailConfig['enabled']) ? $emailConfig['enabled'] : false);
+
+$slackEnabled = !empty(CredentialManager::getCredential(CredentialManager::TYPE_SLACK_WEBHOOK)) &&
+                get_option('wp_security_monitor_slack_enabled', false);
+
+$logEnabled = isset($logConfig['enabled']) ? $logConfig['enabled'] : false;
+
 $channelStatus = [
-    'TelegramChannel' => !empty(CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_TOKEN)),
-    'EmailChannel' => !empty(get_option('wp_security_monitor_email_config')),
-    'SlackChannel' => !empty(CredentialManager::getCredential(CredentialManager::TYPE_SLACK_WEBHOOK)),
-    'LogChannel' => get_option('wp_security_monitor_log_config')['enabled'] ?? true
+    'TelegramChannel' => $telegramEnabled,
+    'EmailChannel' => $emailEnabled,
+    'SlackChannel' => $slackEnabled,
+    'LogChannel' => $logEnabled
 ];
+
+// Debug: Log channel statuses for troubleshooting
+if (WP_DEBUG) {
+    error_log('[Dashboard Debug] Channel Statuses:');
+    error_log('[Dashboard Debug] Telegram: ' . ($telegramEnabled ? 'ENABLED' : 'DISABLED'));
+    error_log('[Dashboard Debug] Email: ' . ($emailEnabled ? 'ENABLED' : 'DISABLED'));
+    error_log('[Dashboard Debug] Slack: ' . ($slackEnabled ? 'ENABLED' : 'DISABLED'));
+    error_log('[Dashboard Debug] Log: ' . ($logEnabled ? 'ENABLED' : 'DISABLED'));
+    error_log('[Dashboard Debug] Total Active Channels: ' . count(array_filter($channelStatus)));
+}
 
 // Get issuers status - estimate based on config
 $issuersConfig = get_option('wp_security_monitor_issuers_config', []);
@@ -164,7 +189,8 @@ $issuerStatus = [
                                     <div class="issue-content">
                                         <strong><?php echo esc_html($issue['issuer_name'] ?? 'Unknown Issuer'); ?></strong>
                                         <?php
-                                        $debugInfo = json_decode($issue['raw_data'] ?? '{}', true);
+                                        $rawData = $issue['raw_data'] ?? '{}';
+                                        $debugInfo = is_array($rawData) ? $rawData : json_decode($rawData, true);
                                         $issuerType = $debugInfo['issuer_type'] ?? 'Unknown';
                                         $typeIcon = $issuerType === 'TRIGGER' ? '⚡' : ($issuerType === 'SCAN' ? '🔍' : '🔄');
                                         ?>
@@ -224,6 +250,34 @@ $issuerStatus = [
                             </button>
                         </form>
                         <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Channels Status Widget -->
+            <div class="postbox">
+                <div class="postbox-header">
+                    <h2 class="hndle">🔍 Debug Channels (Tạm thời)</h2>
+                </div>
+                <div class="inside">
+                    <div style="background: #f0f0f0; padding: 10px; border-radius: 4px; font-family: monospace;">
+                        <strong>Channel Status Debug:</strong><br>
+                        • Telegram: <?php echo $telegramEnabled ? '✅ ENABLED' : '❌ DISABLED'; ?><br>
+                        • Email: <?php echo $emailEnabled ? '✅ ENABLED' : '❌ DISABLED'; ?><br>
+                        • Slack: <?php echo $slackEnabled ? '✅ ENABLED' : '❌ DISABLED'; ?><br>
+                        • Log: <?php echo $logEnabled ? '✅ ENABLED' : '❌ DISABLED'; ?><br>
+                        <br>
+                        <strong>Raw Values:</strong><br>
+                        • Telegram Token: <?php echo !empty(CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_TOKEN)) ? '✅ Có' : '❌ Không có'; ?><br>
+                        • Telegram Chat ID: <?php echo !empty(CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_CHAT_ID)) ? '✅ Có' : '❌ Không có'; ?><br>
+                        • Telegram Enabled Option: <?php echo get_option('wp_security_monitor_telegram_enabled', 'NOT SET'); ?><br>
+                        • Email Config: <?php echo !empty($emailConfig['to']) ? '✅ Có email' : '❌ Không có email'; ?><br>
+                        • Email Enabled: <?php echo isset($emailConfig['enabled']) ? ($emailConfig['enabled'] ? 'true' : 'false') : 'NOT SET'; ?><br>
+                        • Slack Webhook: <?php echo !empty(CredentialManager::getCredential(CredentialManager::TYPE_SLACK_WEBHOOK)) ? '✅ Có' : '❌ Không có'; ?><br>
+                        • Slack Enabled Option: <?php echo get_option('wp_security_monitor_slack_enabled', 'NOT SET'); ?><br>
+                        • Log Enabled: <?php echo isset($logConfig['enabled']) ? ($logConfig['enabled'] ? 'true' : 'false') : 'NOT SET'; ?><br>
+                        <br>
+                        <strong>Total Active Channels: <?php echo count(array_filter($channelStatus)); ?></strong>
                     </div>
                 </div>
             </div>

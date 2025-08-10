@@ -65,17 +65,21 @@ class LogChannel extends Channel
             $logEntry = $this->formatLogEntry($message, $data);
             $logFile = $this->getLogFilePath();
 
-            // Ensure log directory exists
-            $this->ensureLogDirectory();
+            // Ensure log directory exists and is writable
+            if (!$this->ensureLogDirectory()) {
+                $this->logError('Failed to create or access log directory: ' . $this->getLogDirectory());
+                return false;
+            }
 
             // Check file size and rotate if needed
             $this->rotateLogIfNeeded($logFile);
 
-            // Write log entry
+            // Write log entry with better error handling
             $result = file_put_contents($logFile, $logEntry, FILE_APPEND | LOCK_EX);
 
             if ($result === false) {
-                $this->logError('Failed to write to log file: ' . $logFile);
+                $error = error_get_last();
+                $this->logError('Failed to write to log file: ' . $logFile . '. Error: ' . ($error['message'] ?? 'Unknown error'));
                 return false;
             }
 
@@ -287,9 +291,24 @@ class LogChannel extends Channel
     {
         $logDir = $this->getLogDirectory();
 
-        if (!is_dir($logDir)) {
-            if (!wp_mkdir_p($logDir)) {
-                throw new \Exception('Cannot create log directory: ' . $logDir);
+        try {
+            if (!is_dir($logDir)) {
+                if (!wp_mkdir_p($logDir)) {
+                    $this->logError('Cannot create log directory: ' . $logDir);
+                    return false;
+                }
+
+                // Verify directory was created
+                if (!is_dir($logDir)) {
+                    $this->logError('Directory creation failed: ' . $logDir);
+                    return false;
+                }
+            }
+
+            // Check if directory is writable
+            if (!is_writable($logDir)) {
+                $this->logError('Log directory is not writable: ' . $logDir);
+                return false;
             }
 
             // Create .htaccess to protect log files
@@ -297,9 +316,12 @@ class LogChannel extends Channel
 
             // Create index.php to prevent directory listing
             $this->createIndexFile($logDir);
-        }
 
-        return true;
+            return true;
+        } catch (\Exception $e) {
+            $this->logError('Error ensuring log directory: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**

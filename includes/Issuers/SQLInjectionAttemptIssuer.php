@@ -196,9 +196,19 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
     {
         return function($message, $title = '', $args = []) use ($handler) {
             if ($this->isEnabled()) {
+                // Convert WP_Error to string if needed
+                $messageText = '';
+                if (is_wp_error($message)) {
+                    $messageText = $message->get_error_message();
+                } elseif (is_string($message)) {
+                    $messageText = $message;
+                } else {
+                    $messageText = (string) $message;
+                }
+
                 // Check if error message contains SQL injection indicators
-                if ($this->containsDatabaseError($message)) {
-                    $this->logDatabaseError($message, $title, $args);
+                if ($this->containsDatabaseError($messageText)) {
+                    $this->logDatabaseError($messageText, $title, $args);
                 }
             }
 
@@ -252,7 +262,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
 
                 // Tạo issue với full forensic data
         $issueManager = new \Puleeno\SecurityBot\WebMonitor\IssueManager();
-        
+
         $issue = ForensicHelper::createSecurityIssue(
             'sql_injection_attempt',
             $severity,
@@ -294,7 +304,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         }
 
                 $issueManager = new \Puleeno\SecurityBot\WebMonitor\IssueManager();
-        
+
         $issue = ForensicHelper::createSecurityIssue(
             'database_error_sqli',
             'medium',
@@ -373,7 +383,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
     private function getDbErrorPatterns(string $message): array
     {
         $matches = [];
-        
+
         foreach ($this->dbErrorPatterns as $pattern) {
             if (preg_match($pattern, $message, $match)) {
                 $matches[] = [
@@ -382,7 +392,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
                 ];
             }
         }
-        
+
         return $matches;
     }
 
@@ -392,7 +402,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
     private function getMatchedPatterns(array $suspiciousParams): array
     {
         $matchedPatterns = [];
-        
+
         foreach ($suspiciousParams as $method => $params) {
             if (is_array($params)) {
                 foreach ($params as $key => $value) {
@@ -408,7 +418,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
                 }
             }
         }
-        
+
         return $matchedPatterns;
     }
 
@@ -420,7 +430,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         $matches = [];
         $input = urldecode($input);
         $input = html_entity_decode($input);
-        
+
         foreach ($this->sqlPatterns as $pattern) {
             if (preg_match($pattern, $input, $match)) {
                 $matches[] = [
@@ -430,7 +440,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
                 ];
             }
         }
-        
+
         return $matches;
     }
 

@@ -6,6 +6,10 @@ if (!defined('ABSPATH')) {
 $bot = \Puleeno\SecurityBot\WebMonitor\Bot::getInstance();
 $stats = $bot->getStats();
 
+// Debug: Show current SSL verification setting
+$currentSslVerify = get_option('wp_security_monitor_telegram_ssl_verify', 'NOT_SET');
+error_log('Current SSL verify option value: ' . var_export($currentSslVerify, true));
+
 // Import secure credential managers
 use Puleeno\SecurityBot\WebMonitor\Security\SecureConfigManager;
 use Puleeno\SecurityBot\WebMonitor\Security\CredentialManager;
@@ -49,15 +53,39 @@ if (isset($_POST['security_monitor_action']) && wp_verify_nonce($_POST['_wpnonce
     $stats = $bot->getStats();
 }
 
-// Xử lý settings form submit
-if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'security_monitor_settings')) {
+        // Xử lý settings form submit
+    if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'security_monitor_settings')) {
+
+        // Debug: Log POST data for troubleshooting
+        error_log('Settings form submitted. POST data: ' . print_r($_POST, true));
+        error_log('Nonce verification passed');
+
+        // Debug: Check if telegram data exists
+        if (isset($_POST['telegram'])) {
+            error_log('Telegram data found in POST: ' . print_r($_POST['telegram'], true));
+        } else {
+            error_log('No telegram data found in POST');
+        }
 
     // Lưu Telegram config với secure storage
     if (isset($_POST['telegram'])) {
         $telegramData = $_POST['telegram'];
 
+        // Debug: Log telegram data before processing
+        error_log('Processing telegram data: ' . print_r($telegramData, true));
+
         // Save enabled status
         update_option('wp_security_monitor_telegram_enabled', isset($telegramData['enabled']));
+
+        // Save SSL verification setting - handle unchecked checkbox properly
+        $sslVerify = (bool) $telegramData['ssl_verify'];
+        error_log('SSL verify value from POST: ' . var_export($telegramData['ssl_verify'], true));
+        error_log('SSL verify after casting to bool: ' . var_export($sslVerify, true));
+        update_option('wp_security_monitor_telegram_ssl_verify', $sslVerify);
+
+        // Debug: Log the SSL verification setting
+        error_log('Telegram SSL Verify setting: ' . ($sslVerify ? 'true' : 'false'));
+        error_log('SSL verify option saved to database: ' . get_option('wp_security_monitor_telegram_ssl_verify', 'NOT_SET'));
 
         // Save credentials securely
         if (!empty($telegramData['bot_token'])) {
@@ -132,25 +160,43 @@ if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
         }
 
         // Save other Slack settings
-        update_option('wp_security_monitor_slack_channel', sanitize_text_field($slackData['channel']));
-        update_option('wp_security_monitor_slack_username', sanitize_text_field($slackData['username']));
-        update_option('wp_security_monitor_slack_icon', sanitize_text_field($slackData['icon_emoji']));
+        if (isset($slackData['channel'])) {
+            update_option('wp_security_monitor_slack_channel', sanitize_text_field($slackData['channel']));
+        }
+        if (isset($slackData['username'])) {
+            update_option('wp_security_monitor_slack_username', sanitize_text_field($slackData['username']));
+        }
+        if (isset($slackData['icon'])) {
+            update_option('wp_security_monitor_slack_icon', sanitize_text_field($slackData['icon']));
+        }
     }
 
-    // Lưu Log config
-    if (isset($_POST['log'])) {
-        $logData = $_POST['log'];
-        update_option('wp_security_monitor_log_config', [
-            'enabled' => isset($logData['enabled']),
-            'log_directory' => sanitize_text_field($logData['log_directory']),
-            'file_pattern' => sanitize_text_field($logData['file_pattern']),
-            'max_file_size' => intval($logData['max_file_size']) * 1024 * 1024, // Convert MB to bytes
-            'max_files' => intval($logData['max_files']),
-            'include_debug_info' => isset($logData['include_debug_info'])
-        ]);
+            // Lưu Log config
+        if (isset($_POST['log'])) {
+            $logData = $_POST['log'];
+            update_option('wp_security_monitor_log_config', [
+                'enabled' => isset($logData['enabled']),
+                'log_directory' => sanitize_text_field($logData['log_directory']),
+                'file_pattern' => sanitize_text_field($logData['file_pattern']),
+                'max_file_size' => intval($logData['max_file_size']) * 1024 * 1024, // Convert MB to bytes
+                'max_files' => intval($logData['max_files']),
+                'include_debug_info' => isset($logData['include_debug_info'])
+            ]);
+        }
+
+        // Show success message
+        echo '<div class="notice notice-success"><p>Cấu hình đã được lưu thành công!</p></div>';
+
+    } else {
+        // Debug: Log why form submission failed
+        if (!isset($_POST['submit'])) {
+            error_log('Form not submitted - submit button not clicked');
+        } else {
+            error_log('Form submitted but nonce verification failed');
+        }
     }
 
-    echo '<div class="notice notice-success"><p>Cấu hình đã được lưu!</p></div>';
+
 
     // Reload configs after settings save
     $telegramConfig = [
@@ -167,7 +213,6 @@ if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
         'icon_emoji' => get_option('wp_security_monitor_slack_icon', ':shield:')
     ];
     $logConfig = get_option('wp_security_monitor_log_config', []);
-}
 ?>
 
 <div class="wrap">
@@ -234,6 +279,17 @@ if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
             </tr>
         </table>
 
+        <!-- Debug Section -->
+        <div class="card" style="background-color: #f0f0f0; border-left: 4px solid #0073aa;">
+            <h3>🐛 Debug Information</h3>
+            <p><strong>Current SSL Verify Option:</strong> <?php echo var_export($currentSslVerify, true); ?></p>
+            <p><strong>Option Type:</strong> <?php echo gettype($currentSslVerify); ?></p>
+            <p><strong>Raw Option Value:</strong> <?php echo var_export(get_option('wp_security_monitor_telegram_ssl_verify'), true); ?></p>
+            <p><strong>Protocol sẽ được sử dụng:</strong> <strong style="color: #0073aa;">HTTPS</strong> (Telegram API chỉ hỗ trợ HTTPS)</p>
+            <p><strong>SSL Options:</strong> sslverify=<?php echo ($currentSslVerify ? 'true' : 'false'); ?>, ssl=<?php echo ($currentSslVerify ? 'true' : 'false'); ?>, curl_ssl_verifypeer=<?php echo ($currentSslVerify ? 'true' : 'false'); ?>, curl_ssl_verifyhost=<?php echo ($currentSslVerify ? 'true' : 'false'); ?></p>
+            <p><strong>Note:</strong> Khi SSL verification bị tắt, plugin sẽ sử dụng cURL options để bỏ qua SSL certificate check nhưng vẫn kết nối qua HTTPS.</p>
+        </div>
+
         <p>
             <form method="post" style="display: inline;">
                 <?php wp_nonce_field('security_monitor_action'); ?>
@@ -295,13 +351,36 @@ if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
                         </p>
                     </td>
                 </tr>
+                        <tr>
+            <th scope="row">
+                <label for="telegram_ssl_verify">SSL Verification</label>
+            </th>
+            <td>
+                <input type="hidden" name="telegram[ssl_verify]" value="0">
+                <input type="checkbox" id="telegram_ssl_verify" name="telegram[ssl_verify]" value="1"
+                       <?php checked(get_option('wp_security_monitor_telegram_ssl_verify', true)); ?>>
+                <label for="telegram_ssl_verify">Bật SSL certificate verification (bỏ chọn nếu gặp lỗi SSL)</label>
+                <p class="description">Bỏ chọn nếu test trên môi trường local hoặc server có SSL self-signed</p>
+            </td>
+        </tr>
                 <tr>
                     <th scope="row">Test kết nối</th>
                     <td>
-                        <button type="button" class="button" onclick="testChannel('telegram')">
-                            📤 Gửi tin nhắn test
+                        <button type="button" class="button button-secondary" onclick="testChannel('telegram')">
+                            🔗 Test kết nối
                         </button>
                         <span id="telegram-test-result"></span>
+                        <p class="description">Kiểm tra kết nối với Telegram Bot API</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Test gửi tin nhắn</th>
+                    <td>
+                        <button type="button" class="button button-secondary" onclick="testSendMessage('telegram')">
+                            📤 Gửi tin nhắn test
+                        </button>
+                        <span id="telegram-send-result"></span>
+                        <p class="description">Gửi tin nhắn test thực tế để kiểm tra bot có thể gửi tin nhắn hay không</p>
                     </td>
                 </tr>
             </table>
@@ -354,12 +433,23 @@ if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row">Test Email</th>
+                    <th scope="row">Test kết nối</th>
                     <td>
-                        <button type="button" class="button" onclick="testChannel('email')">
-                            📤 Gửi email test
+                        <button type="button" class="button button-secondary" onclick="testChannel('email')">
+                            🔗 Test kết nối
                         </button>
                         <span id="email-test-result"></span>
+                        <p class="description">Kiểm tra cấu hình email</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Test gửi tin nhắn</th>
+                    <td>
+                        <button type="button" class="button button-secondary" onclick="testSendMessage('email')">
+                            📤 Gửi email test
+                        </button>
+                        <span id="email-send-result"></span>
+                        <p class="description">Gửi email test thực tế để kiểm tra khả năng gửi email</p>
                     </td>
                 </tr>
             </table>
@@ -386,10 +476,8 @@ if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
                     <td>
                         <input type="url" id="slack_webhook_url" name="slack[webhook_url]"
                                value="<?php echo esc_attr($slackConfig['webhook_url'] ?? ''); ?>"
-                               class="regular-text" placeholder="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX">
-                        <p class="description">
-                            Tạo Incoming Webhook tại <a href="https://api.slack.com/apps" target="_blank">https://api.slack.com/apps</a>
-                        </p>
+                               class="regular-text" placeholder="https://hooks.slack.com/services/...">
+                        <p class="description">URL webhook từ Slack app settings</p>
                     </td>
                 </tr>
                 <tr>
@@ -398,11 +486,9 @@ if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
                     </th>
                     <td>
                         <input type="text" id="slack_channel" name="slack[channel]"
-                               value="<?php echo esc_attr($slackConfig['channel'] ?? '#security'); ?>"
-                               class="regular-text" placeholder="#security">
-                        <p class="description">
-                            Channel hoặc user nhận thông báo (e.g., #security, @username). Để trống để dùng default của webhook.
-                        </p>
+                               value="<?php echo esc_attr($slackConfig['channel'] ?? '#general'); ?>"
+                               class="regular-text" placeholder="#general">
+                        <p class="description">Channel nhận thông báo (bắt đầu bằng #)</p>
                     </td>
                 </tr>
                 <tr>
@@ -411,35 +497,44 @@ if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
                     </th>
                     <td>
                         <input type="text" id="slack_username" name="slack[username]"
-                               value="<?php echo esc_attr($slackConfig['username'] ?? 'Security Monitor Bot'); ?>"
-                               class="regular-text" placeholder="Security Monitor Bot">
+                               value="<?php echo esc_attr($slackConfig['username'] ?? 'WP Security Monitor'); ?>"
+                               class="regular-text">
                         <p class="description">Tên hiển thị của bot trong Slack</p>
                     </td>
                 </tr>
                 <tr>
                     <th scope="row">
-                        <label for="slack_icon_emoji">Icon Emoji</label>
+                        <label for="slack_icon">Bot Icon</label>
                     </th>
                     <td>
-                        <input type="text" id="slack_icon_emoji" name="slack[icon_emoji]"
-                               value="<?php echo esc_attr($slackConfig['icon_emoji'] ?? ':warning:'); ?>"
-                               class="regular-text" placeholder=":warning:">
-                        <p class="description">
-                            Emoji icon cho bot (e.g., :warning:, :shield:, :robot_face:)
-                        </p>
+                        <input type="text" id="slack_icon" name="slack[icon]"
+                               value="<?php echo esc_attr($slackConfig['icon_emoji'] ?? ':shield:'); ?>"
+                               class="regular-text" placeholder=":shield:">
+                        <p class="description">Emoji icon cho bot (ví dụ: :shield:, :warning:)</p>
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row">Test Slack</th>
+                    <th scope="row">Test kết nối</th>
                     <td>
-                        <button type="button" class="button" onclick="testChannel('slack')">
-                            💬 Gửi tin nhắn test
+                        <button type="button" class="button button-secondary" onclick="testChannel('slack')">
+                            🔗 Test kết nối
                         </button>
                         <span id="slack-test-result"></span>
+                        <p class="description">Kiểm tra kết nối với Slack webhook</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Test gửi tin nhắn</th>
+                    <td>
+                        <button type="button" class="button button-secondary" onclick="testSendMessage('slack')">
+                            📤 Gửi tin nhắn test
+                        </button>
+                        <span id="slack-send-result"></span>
+                        <p class="description">Gửi tin nhắn test thực tế để kiểm tra khả năng gửi tin nhắn Slack</p>
                     </td>
                 </tr>
             </table>
-        </div>
+
 
         <!-- Log Settings -->
         <div class="card">
@@ -522,15 +617,23 @@ if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row">Test Log</th>
+                    <th scope="row">Test kết nối</th>
                     <td>
-                        <button type="button" class="button" onclick="testChannel('log')">
-                            📄 Test ghi log
+                        <button type="button" class="button button-secondary" onclick="testChannel('log')">
+                            🔗 Test kết nối
                         </button>
                         <span id="log-test-result"></span>
-                        <p class="description">
-                            Test khả năng ghi log và hiển thị thông tin về log directory
-                        </p>
+                        <p class="description">Kiểm tra khả năng ghi log và hiển thị thông tin về log directory</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Test gửi tin nhắn</th>
+                    <td>
+                        <button type="button" class="button button-secondary" onclick="testSendMessage('log')">
+                            📄 Test ghi log
+                        </button>
+                        <span id="log-send-result"></span>
+                        <p class="description">Ghi log test thực tế để kiểm tra khả năng ghi log</p>
                     </td>
                 </tr>
             </table>
@@ -579,9 +682,14 @@ if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
 .card h2 {
     margin-top: 0;
 }
-#telegram-test-result, #email-test-result, #slack-test-result, #log-test-result {
+#telegram-test-result, #email-test-result, #slack-test-result, #log-test-result,
+#telegram-send-result, #email-send-result, #slack-send-result, #log-send-result {
     margin-left: 10px;
     font-weight: bold;
+    display: block;
+    margin-top: 5px;
+    word-wrap: break-word;
+    max-width: 400px;
 }
 .test-success {
     color: #46b450;
@@ -609,10 +717,40 @@ function testChannel(type) {
     })
     .then(response => response.json())
     .then(data => {
-        if (data.success && data.data.success) {
-            resultElement.innerHTML = '<span class="test-success">✅ Test thành công!</span>';
+        console.log('AJAX Response:', data); // Debug log
+        if (data.success) {
+            resultElement.innerHTML = '<span class="test-success">✅ ' + data.data + '</span>';
         } else {
-            resultElement.innerHTML = '<span class="test-error">❌ Test thất bại!</span>';
+            resultElement.innerHTML = '<span class="test-error">❌ ' + (data.data || 'Test thất bại') + '</span>';
+        }
+    })
+    .catch(error => {
+        resultElement.innerHTML = '<span class="test-error">❌ Lỗi: ' + error.message + '</span>';
+    });
+}
+
+function testSendMessage(type) {
+    const resultElement = document.getElementById(type + '-send-result');
+    resultElement.innerHTML = '⏳ Đang gửi tin nhắn test...';
+
+    fetch(ajaxurl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            action: 'security_monitor_test_send_message',
+            channel_type: type,
+            nonce: '<?php echo wp_create_nonce('security_monitor_nonce'); ?>'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Send Message AJAX Response:', data); // Debug log
+        if (data.success) {
+            resultElement.innerHTML = '<span class="test-success">✅ ' + data.data + '</span>';
+        } else {
+            resultElement.innerHTML = '<span class="test-error">❌ ' + (data.data || 'Gửi tin nhắn thất bại') + '</span>';
         }
     })
     .catch(error => {

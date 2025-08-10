@@ -76,21 +76,53 @@ abstract class MonitorAbstract implements MonitorInterface
     {
         $message = $this->formatMessage($issuerName, $issues);
 
+        // Debug: Log notification attempt
+        if (WP_DEBUG) {
+            error_log("[Monitor Debug] Attempting to send notifications for issuer: {$issuerName}");
+            error_log("[Monitor Debug] Total channels available: " . count($this->channels));
+            error_log("[Monitor Debug] Message content: " . substr($message, 0, 200) . "...");
+        }
+
         foreach ($this->channels as $channel) {
+            $channelName = $channel->getName();
+            
+            // Debug: Log channel check
+            if (WP_DEBUG) {
+                error_log("[Monitor Debug] Checking channel: {$channelName}");
+            }
+            
             if (!$channel->isAvailable()) {
+                if (WP_DEBUG) {
+                    error_log("[Monitor Debug] Channel {$channelName} is NOT available - skipping");
+                }
                 continue;
             }
 
+            if (WP_DEBUG) {
+                error_log("[Monitor Debug] Channel {$channelName} is available - attempting to send");
+            }
+
             try {
-                $channel->send($message, [
+                $result = $channel->send($message, [
                     'issuer' => $issuerName,
                     'issues' => $issues,
                     'timestamp' => time(),
                     'site_url' => home_url()
                 ]);
+                
+                if (WP_DEBUG) {
+                    error_log("[Monitor Debug] Channel {$channelName} send result: " . ($result ? 'SUCCESS' : 'FAILED'));
+                }
             } catch (\Exception $e) {
                 error_log(sprintf('Error sending notification via %s: %s', $channel->getName(), $e->getMessage()));
+                if (WP_DEBUG) {
+                    error_log("[Monitor Debug] Channel {$channelName} exception: " . $e->getMessage());
+                }
             }
+        }
+        
+        if (WP_DEBUG) {
+            error_log("[Monitor Debug] Notification sending completed for issuer: {$issuerName}");
         }
     }
 

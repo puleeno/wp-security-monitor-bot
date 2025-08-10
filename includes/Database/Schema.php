@@ -34,6 +34,11 @@ class Schema
     const TABLE_AUDIT_LOG = 'security_monitor_audit_log';
 
     /**
+     * Tên table cho notifications queue
+     */
+    const TABLE_NOTIFICATIONS = 'security_monitor_notifications';
+
+    /**
      * Tạo tables khi plugin được activate
      *
      * @return void
@@ -57,6 +62,7 @@ class Schema
             description text,
             details longtext,
             raw_data longtext,
+            backtrace longtext DEFAULT NULL,
             file_path varchar(500) DEFAULT NULL,
             ip_address varchar(45) DEFAULT NULL,
             user_agent text DEFAULT NULL,
@@ -183,6 +189,30 @@ class Schema
             KEY idx_created_at (created_at)
         ) $charset_collate;";
 
+        // Notifications queue table
+        $notificationsSQL = "CREATE TABLE {$wpdb->prefix}" . self::TABLE_NOTIFICATIONS . " (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            channel_name varchar(100) NOT NULL,
+            issue_id bigint(20) unsigned NOT NULL,
+            message text NOT NULL,
+            context longtext DEFAULT NULL,
+            status enum('pending','sent','failed','retry') DEFAULT 'pending',
+            retry_count int(11) DEFAULT 0,
+            max_retries int(11) DEFAULT 3,
+            last_attempt datetime DEFAULT NULL,
+            sent_at datetime DEFAULT NULL,
+            error_message text DEFAULT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_channel_name (channel_name),
+            KEY idx_issue_id (issue_id),
+            KEY idx_status (status),
+            KEY idx_created_at (created_at),
+            KEY idx_pending (status, created_at),
+            FOREIGN KEY (issue_id) REFERENCES {$wpdb->prefix}" . self::TABLE_ISSUES . "(id) ON DELETE CASCADE
+        ) $charset_collate;";
+
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
 
         dbDelta($issuesSQL);
@@ -191,9 +221,10 @@ class Schema
         dbDelta($pendingSQL);
         dbDelta($rejectedSQL);
         dbDelta($auditSQL);
+        dbDelta($notificationsSQL);
 
         // Lưu phiên bản database
-        update_option('wp_security_monitor_db_version', '1.0');
+        update_option('wp_security_monitor_db_version', '1.1');
     }
 
     /**
@@ -231,10 +262,47 @@ class Schema
     public static function updateSchema(): void
     {
         $currentVersion = get_option('wp_security_monitor_db_version', '0');
-        $latestVersion = '1.0';
+        $latestVersion = '1.1';
 
         if (version_compare($currentVersion, $latestVersion, '<')) {
-            self::createTables();
+            if (version_compare($currentVersion, '1.0', '<')) {
+                self::createTables();
+            }
+
+            // Migration từ version 1.0 lên 1.1: thêm column backtrace
+            if (version_compare($currentVersion, '1.1', '<')) {
+                self::addBacktraceColumn();
+            }
+
+            update_option('wp_security_monitor_db_version', $latestVersion);
+        }
+    }
+
+    /**
+     * Thêm column backtrace vào table issues
+     *
+     * @return void
+     */
+    private static function addBacktraceColumn(): void
+    {
+        global $wpdb;
+
+        $issuesTable = self::getTableName(self::TABLE_ISSUES);
+
+        // Kiểm tra xem column backtrace đã tồn tại chưa
+        $columnExists = $wpdb->get_results($wpdb->prepare(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = 'backtrace'",
+            DB_NAME,
+            $issuesTable
+        ));
+
+        if (empty($columnExists)) {
+            $wpdb->query("ALTER TABLE $issuesTable ADD COLUMN backtrace longtext DEFAULT NULL AFTER raw_data");
+
+            if (WP_DEBUG) {
+                error_log("WP Security Monitor: Added backtrace column to issues table");
+            }
         }
     }
 

@@ -4,7 +4,6 @@ namespace Puleeno\SecurityBot\WebMonitor;
 use Puleeno\SecurityBot\WebMonitor\Abstracts\MonitorAbstract;
 use Puleeno\SecurityBot\WebMonitor\Interfaces\ChannelInterface;
 use Puleeno\SecurityBot\WebMonitor\Interfaces\IssuerInterface;
-use Puleeno\SecurityBot\WebMonitor\Channels\TelegramChannel;
 use Puleeno\SecurityBot\WebMonitor\Channels\EmailChannel;
 use Puleeno\SecurityBot\WebMonitor\Channels\SlackChannel;
 use Puleeno\SecurityBot\WebMonitor\Channels\LogChannel;
@@ -20,9 +19,11 @@ use Puleeno\SecurityBot\WebMonitor\Issuers\EvalFunctionIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\GitFileChangesIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\SQLInjectionAttemptIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\BackdoorDetectionIssuer;
+use Puleeno\SecurityBot\WebMonitor\Issuers\RealtimeRedirectIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\FunctionOverrideIssuer;
 use Puleeno\SecurityBot\WebMonitor\IssueManager;
 use Puleeno\SecurityBot\WebMonitor\Database\Schema;
+use Exception;
 
 class Bot extends MonitorAbstract
 {
@@ -33,11 +34,20 @@ class Bot extends MonitorAbstract
      */
     private $cronHook = 'wp_security_monitor_bot_check';
 
+    /**
+     * @var IssueManager
+     */
+    private $issueManager;
+
     protected function __construct()
     {
         $this->initializeHooks();
         $this->loadConfiguration();
+        // Khởi tạo channels và issuers ngay lập tức để các hooks được đăng ký
         $this->setupDefaultChannelsAndIssuers();
+
+        // Initialize managers
+        $this->issueManager = IssueManager::getInstance();
 
         // Initialize security systems
         AccessControl::init();
@@ -114,10 +124,20 @@ class Bot extends MonitorAbstract
 
         // Hook cho AJAX
         add_action('wp_ajax_security_monitor_test_channel', [$this, 'ajaxTestChannel']);
+        add_action('wp_ajax_security_monitor_test_send_message', [$this, 'ajaxTestSendMessage']);
         add_action('wp_ajax_security_monitor_run_check', [$this, 'ajaxRunCheck']);
 
         // Hook cho manual check từ admin
         add_action('admin_init', [$this, 'handleAdminActions']);
+
+        // Hook cho notification processing
+        add_action('wp_security_monitor_process_notifications', [$this, 'processNotificationsCron']);
+
+        // Hook cho suspicious redirect detection
+        add_action('wp_security_monitor_suspicious_redirect', [$this, 'handleSuspiciousRedirect']);
+
+        // Hook cho user registration detection
+        add_action('wp_security_monitor_user_registered', [$this, 'handleUserRegistration']);
     }
 
     /**
@@ -191,6 +211,48 @@ class Bot extends MonitorAbstract
     }
 
     /**
+     * Đảm bảo channels được khởi tạo khi cần thiết
+     *
+     * @return void
+     */
+    private function ensureChannelsInitialized(): void
+    {
+        // Debug logging
+        if (WP_DEBUG) {
+            error_log("[Bot Debug] ensureChannelsInitialized called");
+            error_log("[Bot Debug] Current channels count: " . count($this->channels));
+            error_log("[Bot Debug] Current issuers count: " . count($this->issuers));
+        }
+
+        // Kiểm tra cả channels và issuers
+        $needsInitialization = empty($this->channels) || empty($this->issuers);
+
+        if (!$needsInitialization) {
+            if (WP_DEBUG) {
+                error_log("[Bot Debug] Channels and issuers already initialized, skipping");
+            }
+            return;
+        }
+
+        if (WP_DEBUG) {
+            error_log("[Bot Debug] Initializing channels and issuers...");
+        }
+
+        // Khởi tạo channels và issuers
+        $this->setupDefaultChannelsAndIssuers();
+
+        if (WP_DEBUG) {
+            error_log("[Bot Debug] Initialization completed. Total channels: " . count($this->channels) . ", Total issuers: " . count($this->issuers));
+            foreach ($this->channels as $index => $channel) {
+                error_log("[Bot Debug] Channel {$index}: " . $channel->getName() . " - Available: " . ($channel->isAvailable() ? 'YES' : 'NO'));
+            }
+            foreach ($this->issuers as $index => $issuer) {
+                error_log("[Bot Debug] Issuer {$index}: " . get_class($issuer) . " - Enabled: " . ($issuer->isEnabled() ? 'YES' : 'NO'));
+            }
+        }
+    }
+
+    /**
      * Setup các channel và issuer mặc định
      *
      * @return void
@@ -203,20 +265,41 @@ class Bot extends MonitorAbstract
         // Setup Telegram Channel với secure credentials
         $telegramToken = CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_TOKEN);
         $telegramChatId = CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_CHAT_ID);
+        $telegramEnabled = get_option('wp_security_monitor_telegram_enabled', false);
 
-        if ($telegramToken && $telegramChatId) {
-            $telegram = new TelegramChannel();
-            $telegram->configure([
-                'bot_token' => $telegramToken,
-                'chat_id' => $telegramChatId,
-                'enabled' => true
-            ]);
-            $this->addChannel($telegram);
+        if (WP_DEBUG) {
+            error_log("[Bot Debug] Telegram setup - Token: " . (!empty($telegramToken) ? 'SET' : 'MISSING') .
+                     ", Chat ID: " . (!empty($telegramChatId) ? 'SET' : 'MISSING') .
+                     ", Enabled: " . ($telegramEnabled ? 'YES' : 'NO'));
+        }
+
+        if ($telegramToken && $telegramChatId && $telegramEnabled) {
+            try {
+                $telegram = new \Puleeno\SecurityBot\WebMonitor\Channels\TelegramChannel();
+                $telegram->configure([
+                    'bot_token' => $telegramToken,
+                    'chat_id' => $telegramChatId,
+                    'enabled' => true
+                ]);
+                $this->addChannel($telegram);
+
+                if (WP_DEBUG) {
+                    error_log("[Bot Debug] Telegram channel added successfully");
+                }
+            } catch (Exception $e) {
+                if (WP_DEBUG) {
+                    error_log("[Bot Debug] Error adding Telegram channel: " . $e->getMessage());
+                }
+            }
+        } else {
+            if (WP_DEBUG) {
+                error_log("[Bot Debug] Telegram channel not added - missing credentials or disabled");
+            }
         }
 
         // Setup Email Channel
         $emailConfig = get_option('wp_security_monitor_email_config', []);
-        if (!empty($emailConfig['to'])) {
+        if (!empty($emailConfig['to']) && ($emailConfig['enabled'] ?? true)) {
             $email = new EmailChannel();
             $email->configure($emailConfig);
             $this->addChannel($email);
@@ -224,18 +307,24 @@ class Bot extends MonitorAbstract
 
         // Setup Slack Channel với secure credentials
         $slackWebhook = CredentialManager::getCredential(CredentialManager::TYPE_SLACK_WEBHOOK);
-        if ($slackWebhook) {
+        $slackEnabled = get_option('wp_security_monitor_slack_enabled', false);
+
+        if ($slackWebhook && $slackEnabled) {
             $slackConfig = get_option('wp_security_monitor_slack_config', []);
             $slackConfig['webhook_url'] = $slackWebhook;
 
             $slack = new SlackChannel();
             $slack->configure($slackConfig);
             $this->addChannel($slack);
+
+            if (WP_DEBUG) {
+                error_log("[Bot Debug] Slack channel added successfully");
+            }
         }
 
         // Setup Log Channel
         $logConfig = get_option('wp_security_monitor_log_config', []);
-        if ($logConfig['enabled'] ?? true) { // Log channel enabled by default
+        if (isset($logConfig['enabled']) ? $logConfig['enabled'] : true) { // Log channel enabled by default
             $log = new LogChannel();
             $log->configure($logConfig);
             $this->addChannel($log);
@@ -248,25 +337,49 @@ class Bot extends MonitorAbstract
         $redirectIssuer = new ExternalRedirectIssuer();
         $redirectConfig = $issuersConfig['external_redirect'] ?? ['enabled' => true];
         $redirectIssuer->configure($redirectConfig);
-        $this->addIssuer($redirectIssuer);
+        if ($redirectIssuer->isEnabled()) {
+            $this->addIssuer($redirectIssuer);
+        }
+
+        // Realtime Redirect Issuer
+        $realtimeRedirectIssuer = new \Puleeno\SecurityBot\WebMonitor\Issuers\RealtimeRedirectIssuer();
+        $realtimeRedirectConfig = $issuersConfig['realtime_redirect'] ?? ['enabled' => true];
+        $realtimeRedirectIssuer->configure($realtimeRedirectConfig);
+        if ($realtimeRedirectIssuer->isEnabled()) {
+            $this->addIssuer($realtimeRedirectIssuer);
+        }
+
+        // Realtime User Registration Issuer
+        $realtimeUserRegIssuer = new \Puleeno\SecurityBot\WebMonitor\Issuers\RealtimeUserRegistrationIssuer();
+        $realtimeUserRegConfig = $issuersConfig['realtime_user_registration'] ?? ['enabled' => true];
+        $realtimeUserRegIssuer->configure($realtimeUserRegConfig);
+        if ($realtimeUserRegIssuer->isEnabled()) {
+            $this->addIssuer($realtimeUserRegIssuer);
+        }
 
         // Login Attempt Issuer
         $loginIssuer = new LoginAttemptIssuer();
         $loginConfig = $issuersConfig['login_attempt'] ?? ['enabled' => true];
         $loginIssuer->configure($loginConfig);
-        $this->addIssuer($loginIssuer);
+        if ($loginIssuer->isEnabled()) {
+            $this->addIssuer($loginIssuer);
+        }
 
         // File Change Issuer
         $fileIssuer = new FileChangeIssuer();
         $fileConfig = $issuersConfig['file_change'] ?? ['enabled' => true];
         $fileIssuer->configure($fileConfig);
-        $this->addIssuer($fileIssuer);
+        if ($fileIssuer->isEnabled()) {
+            $this->addIssuer($fileIssuer);
+        }
 
         // Admin User Created Issuer
         $adminUserIssuer = new AdminUserCreatedIssuer();
         $adminUserConfig = $issuersConfig['admin_user_created'] ?? ['enabled' => true];
         $adminUserIssuer->configure($adminUserConfig);
-        $this->addIssuer($adminUserIssuer);
+        if ($adminUserIssuer->isEnabled()) {
+            $this->addIssuer($adminUserIssuer);
+        }
 
         // Eval Function Issuer
         $evalIssuer = new EvalFunctionIssuer();
@@ -276,7 +389,9 @@ class Bot extends MonitorAbstract
             'max_scan_depth' => 3
         ];
         $evalIssuer->configure($evalConfig);
-        $this->addIssuer($evalIssuer);
+        if ($evalIssuer->isEnabled()) {
+            $this->addIssuer($evalIssuer);
+        }
 
         // Setup Git File Changes Issuer (nếu Git available)
         $gitIssuer = new GitFileChangesIssuer();
@@ -298,7 +413,9 @@ class Bot extends MonitorAbstract
             'max_alerts_per_hour' => 10
         ];
         $sqliIssuer->configure($sqliConfig);
-        $this->addIssuer($sqliIssuer);
+        if ($sqliIssuer->isEnabled()) {
+            $this->addIssuer($sqliIssuer);
+        }
 
         // Setup Backdoor Detection Issuer - WP CRON ONLY
         $backdoorIssuer = new BackdoorDetectionIssuer();
@@ -309,7 +426,9 @@ class Bot extends MonitorAbstract
             'scan_depth' => 3
         ];
         $backdoorIssuer->configure($backdoorConfig);
-        $this->addIssuer($backdoorIssuer);
+        if ($backdoorIssuer->isEnabled()) {
+            $this->addIssuer($backdoorIssuer);
+        }
 
         // Setup Function Override Issuer - RUNKIT7 REQUIRED
         $overrideIssuer = new FunctionOverrideIssuer();
@@ -322,6 +441,12 @@ class Bot extends MonitorAbstract
         $overrideIssuer->configure($overrideConfig);
         if ($overrideIssuer->isEnabled()) {
             $this->addIssuer($overrideIssuer);
+        }
+
+        if (WP_DEBUG) {
+            error_log("[Bot Debug] setupDefaultChannelsAndIssuers completed");
+            error_log("[Bot Debug] Total channels: " . count($this->channels));
+            error_log("[Bot Debug] Total issuers: " . count($this->issuers));
         }
 
         do_action('wp_security_monitor_bot_setup_complete', $this);
@@ -377,11 +502,27 @@ class Bot extends MonitorAbstract
             'check_interval' => 'hourly'
         ]);
 
-        // Tạo cron job
+        // Tạo cron job cho security checks
         $cronHook = 'wp_security_monitor_bot_check';
         if (!wp_next_scheduled($cronHook)) {
             wp_schedule_event(time(), 'hourly', $cronHook);
         }
+
+        // Tạo cron job cho notification processing (chạy mỗi 5 phút)
+        $notificationCronHook = 'wp_security_monitor_process_notifications';
+        if (!wp_next_scheduled($notificationCronHook)) {
+            // WordPress không có 'every_5_minutes', sử dụng 'hourly' và custom interval
+            wp_schedule_event(time(), 'hourly', $notificationCronHook);
+        }
+
+        // Thêm custom cron interval cho 5 phút
+        add_filter('cron_schedules', function($schedules) {
+            $schedules['every_5_minutes'] = [
+                'interval' => 300, // 5 phút = 300 giây
+                'display' => 'Every 5 Minutes'
+            ];
+            return $schedules;
+        });
     }
 
     /**
@@ -391,11 +532,18 @@ class Bot extends MonitorAbstract
      */
     public static function onDeactivation(): void
     {
-        // Clear cron job
+        // Clear cron job cho security checks
         $cronHook = 'wp_security_monitor_bot_check';
         $timestamp = wp_next_scheduled($cronHook);
         if ($timestamp) {
             wp_unschedule_event($timestamp, $cronHook);
+        }
+
+        // Clear cron job cho notification processing
+        $notificationCronHook = 'wp_security_monitor_process_notifications';
+        $notificationTimestamp = wp_next_scheduled($notificationCronHook);
+        if ($notificationTimestamp) {
+            wp_unschedule_event($notificationTimestamp, $notificationCronHook);
         }
     }
 
@@ -417,17 +565,7 @@ class Bot extends MonitorAbstract
             30                           // Position
         );
 
-        // Security Monitor Settings - submenu
-        add_submenu_page(
-            'puleeno-security',
-            'Security Monitor Settings',
-            'Settings',
-            AccessControl::CAP_MANAGE_SETTINGS,
-            'wp-security-monitor-bot',
-            [$this, 'renderAdminPage']
-        );
-
-        // Security Issues - submenu
+                // Security Issues - submenu
         add_submenu_page(
             'puleeno-security',
             'Security Issues',
@@ -455,6 +593,16 @@ class Bot extends MonitorAbstract
             'read', // Basic permission, then check specific caps inside
             'wp-security-monitor-access-control',
             [$this, 'renderAccessControlPage']
+        );
+
+        // Security Monitor Settings - submenu (moved to bottom)
+        add_submenu_page(
+            'puleeno-security',
+            'Security Monitor Settings',
+            'Settings',
+            AccessControl::CAP_MANAGE_SETTINGS,
+            'wp-security-monitor-bot',
+            [$this, 'renderAdminPage']
         );
     }
 
@@ -529,6 +677,9 @@ class Bot extends MonitorAbstract
      */
     public function runCheck(): array
     {
+        // Đảm bảo channels được khởi tạo trước khi chạy check
+        $this->ensureChannelsInitialized();
+
         $issues = [];
         $issueManager = IssueManager::getInstance();
 
@@ -546,9 +697,17 @@ class Bot extends MonitorAbstract
                     foreach ($detectedIssues as $issueData) {
                         $issueId = $issueManager->recordIssue($issuer->getName(), $issueData);
 
-                        // Chỉ gửi notification cho issues mới (không bị ignore)
+                                                // Chỉ gửi notification cho issues mới (không bị ignore)
                         if ($issueId !== false) {
-                            $this->sendNotifications($issuer->getName(), [$issueData]);
+                            // Kiểm tra xem issue có phải là mới không
+                            $issueHash = $this->generateIssueHash($issuer->getName(), $issueData);
+                            $existingId = $this->getExistingIssueId($issueHash);
+
+                            // Chỉ gửi notification nếu issue chưa tồn tại
+                            if (!$existingId) {
+                                // Thay vì gửi ngay, thêm vào notification queue
+                                $this->queueNotificationsForIssue($issuer->getName(), $issueId, $issueData);
+                            }
                         }
                     }
                 }
@@ -565,6 +724,138 @@ class Bot extends MonitorAbstract
         }
 
         return $issues;
+    }
+
+    /**
+     * Tạo hash duy nhất cho issue
+     *
+     * @param string $issuerName
+     * @param array $issueData
+     * @return string
+     */
+    private function generateIssueHash(string $issuerName, array $issueData): string
+    {
+        // Tạo hash dựa trên issuer name và các thông tin cơ bản của issue
+        $hashData = [
+            'issuer' => $issuerName,
+            'type' => $issueData['type'] ?? 'unknown',
+            'message' => $issueData['message'] ?? '',
+            'file_path' => $issueData['file_path'] ?? '',
+            'ip_address' => $issueData['ip_address'] ?? ''
+        ];
+
+        // Loại bỏ các giá trị null/empty để tạo hash nhất quán
+        $hashData = array_filter($hashData, function($value) {
+            return !empty($value);
+        });
+
+        return md5(serialize($hashData));
+    }
+
+    /**
+     * Kiểm tra xem issue đã tồn tại trong database chưa
+     *
+     * @param string $issueHash
+     * @return int|null Issue ID nếu tồn tại, null nếu chưa tồn tại
+     */
+    private function getExistingIssueId(string $issueHash): ?int
+    {
+        global $wpdb;
+        $tableName = $wpdb->prefix . \Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_ISSUES;
+
+        $existingId = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$tableName} WHERE issue_hash = %s",
+            $issueHash
+        ));
+
+        return $existingId ? (int) $existingId : null;
+    }
+
+    /**
+     * Thêm notifications vào queue cho một issue
+     *
+     * @param string $issuerName
+     * @param int $issueId
+     * @param array $issueData
+     * @return void
+     */
+    private function queueNotificationsForIssue(string $issuerName, int $issueId, array $issueData): void
+    {
+        $notificationManager = \Puleeno\SecurityBot\WebMonitor\NotificationManager::getInstance();
+
+        // Tạo message cho notification
+        $message = $this->formatNotificationMessage($issuerName, $issueData);
+        $context = [
+            'issuer' => $issuerName,
+            'issue_data' => $issueData,
+            'timestamp' => current_time('mysql')
+        ];
+
+        // Thêm notification cho mỗi channel active
+        foreach ($this->channels as $channel) {
+            if ($channel->isAvailable()) {
+                $notificationManager->queueNotification(
+                    $channel->getName(),
+                    $issueId,
+                    $message,
+                    $context
+                );
+
+                if (WP_DEBUG) {
+                    error_log("[Bot] Queued notification for channel: " . $channel->getName() . ", issue: {$issueId}");
+                }
+            }
+        }
+    }
+
+    /**
+     * Format message cho notification
+     *
+     * @param string $issuerName
+     * @param array $issueData
+     * @return string
+     */
+    private function formatNotificationMessage(string $issuerName, array $issueData): string
+    {
+        $title = $issueData['title'] ?? 'Security Issue Detected';
+        $description = $issueData['description'] ?? 'A security issue has been detected';
+        $severity = $issueData['severity'] ?? 'medium';
+        $filePath = $issueData['file_path'] ?? '';
+        $ipAddress = $issueData['ip_address'] ?? '';
+
+        $message = "*🚨 Security Alert*\n\n";
+        $message .= "*Issuer:* {$issuerName}\n";
+        $message .= "*Title:* {$title}\n";
+        $message .= "*Description:* {$description}\n";
+        $message .= "*Severity:* {$severity}\n";
+
+        if (!empty($filePath)) {
+            $message .= "*File:* `{$filePath}`\n";
+        }
+
+        if (!empty($ipAddress)) {
+            $message .= "*IP Address:* `{$ipAddress}`\n";
+        }
+
+        $message .= "\n*Detected at:* " . current_time('mysql');
+
+        return $message;
+    }
+
+    /**
+     * Lấy channel theo tên
+     *
+     * @param string $channelName
+     * @return \Puleeno\SecurityBot\WebMonitor\Abstracts\Channel|null
+     */
+    public function getChannel(string $channelName): ?\Puleeno\SecurityBot\WebMonitor\Abstracts\Channel
+    {
+        foreach ($this->channels as $channel) {
+            if ($channel->getName() === $channelName) {
+                return $channel;
+            }
+        }
+        return null;
     }
 
     /**
@@ -685,6 +976,44 @@ class Bot extends MonitorAbstract
     }
 
     /**
+     * Test gửi tin nhắn thực tế qua channel
+     */
+    public function ajaxTestSendMessage(): void
+    {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'security_monitor_nonce')) {
+            wp_send_json_error('Invalid nonce');
+            return;
+        }
+
+        // Check permissions
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+            return;
+        }
+
+        $channelType = sanitize_text_field($_POST['channel_type'] ?? '');
+
+        if (empty($channelType)) {
+            wp_send_json_error('Channel type is required');
+            return;
+        }
+
+        try {
+            $result = $this->testSendMessage($channelType);
+
+            if ($result['success']) {
+                wp_send_json_success($result['message']);
+            } else {
+                wp_send_json_error($result['message']);
+            }
+
+        } catch (\Exception $e) {
+            wp_send_json_error('Send message test failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Test connection cho specific channel
      */
     private function testChannelConnection(string $channelType): array
@@ -715,18 +1044,33 @@ class Bot extends MonitorAbstract
      */
     private function testTelegramConnection(): array
     {
-        $config = get_option('wp_security_monitor_telegram_config', []);
+        $botToken = CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_TOKEN, false);
+        $chatId = CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_CHAT_ID, false);
+        $enabled = get_option('wp_security_monitor_telegram_enabled', false);
 
-        if (empty($config['bot_token']) || empty($config['chat_id'])) {
+        if (empty($botToken) || empty($chatId)) {
             return [
                 'success' => false,
                 'message' => 'Telegram config is incomplete. Please check bot token and chat ID.'
             ];
         }
 
+        if (!$enabled) {
+            return [
+                'success' => false,
+                'message' => 'Telegram channel is disabled. Please enable it first.'
+            ];
+        }
+
+        $config = [
+            'bot_token' => $botToken,
+            'chat_id' => $chatId
+        ];
+
         $telegram = new \Puleeno\SecurityBot\WebMonitor\Channels\TelegramChannel();
         $telegram->configure($config);
 
+        // TelegramChannel::testConnection() đã cung cấp thông tin SSL và protocol
         return $telegram->testConnection();
     }
 
@@ -744,6 +1088,13 @@ class Bot extends MonitorAbstract
             ];
         }
 
+        if (!($config['enabled'] ?? true)) {
+            return [
+                'success' => false,
+                'message' => 'Email channel is disabled. Please enable it first.'
+            ];
+        }
+
         $email = new \Puleeno\SecurityBot\WebMonitor\Channels\EmailChannel();
         $email->configure($config);
 
@@ -755,14 +1106,29 @@ class Bot extends MonitorAbstract
      */
     private function testSlackConnection(): array
     {
-        $config = get_option('wp_security_monitor_slack_config', []);
+        $webhookUrl = CredentialManager::getCredential(CredentialManager::TYPE_SLACK_WEBHOOK, false);
+        $enabled = get_option('wp_security_monitor_slack_enabled', false);
 
-        if (empty($config['webhook_url'])) {
+        if (empty($webhookUrl)) {
             return [
                 'success' => false,
                 'message' => 'Slack config is incomplete. Please check webhook URL.'
             ];
         }
+
+        if (!$enabled) {
+            return [
+                'success' => false,
+                'message' => 'Slack channel is disabled. Please enable it first.'
+            ];
+        }
+
+        $config = [
+            'webhook_url' => $webhookUrl,
+            'channel' => get_option('wp_security_monitor_slack_channel', '#general'),
+            'username' => get_option('wp_security_monitor_slack_username', 'WP Security Monitor'),
+            'icon_emoji' => get_option('wp_security_monitor_slack_icon', ':shield:')
+        ];
 
         $slack = new \Puleeno\SecurityBot\WebMonitor\Channels\SlackChannel();
         $slack->configure($config);
@@ -770,12 +1136,19 @@ class Bot extends MonitorAbstract
         return $slack->testConnection();
     }
 
-        /**
+    /**
      * Test Log connection
      */
     private function testLogConnection(): array
     {
         $config = get_option('wp_security_monitor_log_config', []);
+
+        if (!($config['enabled'] ?? true)) {
+            return [
+                'success' => false,
+                'message' => 'Log channel is disabled. Please enable it first.'
+            ];
+        }
 
         $log = new LogChannel();
         $log->configure($config);
@@ -811,6 +1184,404 @@ class Bot extends MonitorAbstract
 
         } catch (\Exception $e) {
             wp_send_json_error('Check failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Test gửi tin nhắn thực tế qua channel
+     */
+    private function testSendMessage(string $channelType): array
+    {
+        switch ($channelType) {
+            case 'telegram':
+                return $this->testTelegramSendMessage();
+
+            case 'email':
+                return $this->testEmailSendMessage();
+
+            case 'slack':
+                return $this->testSlackSendMessage();
+
+            case 'log':
+                return $this->testLogSendMessage();
+
+            default:
+                return [
+                    'success' => false,
+                    'message' => "Unknown channel type: {$channelType}"
+                ];
+        }
+    }
+
+    /**
+     * Test gửi tin nhắn Telegram
+     */
+    private function testTelegramSendMessage(): array
+    {
+        $botToken = CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_TOKEN, false);
+        $chatId = CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_CHAT_ID, false);
+        $enabled = get_option('wp_security_monitor_telegram_enabled', false);
+
+        if (empty($botToken) || empty($chatId)) {
+            return [
+                'success' => false,
+                'message' => 'Telegram config is incomplete. Please check bot token and chat ID.'
+            ];
+        }
+
+        if (!$enabled) {
+            return [
+                'success' => false,
+                'message' => 'Telegram channel is disabled. Please enable it first.'
+            ];
+        }
+
+        $config = [
+            'bot_token' => $botToken,
+            'chat_id' => $chatId,
+            'enabled' => true
+        ];
+
+        $telegram = new \Puleeno\SecurityBot\WebMonitor\Channels\TelegramChannel();
+        $telegram->configure($config);
+
+        // Gửi tin nhắn Telegram test với thông tin site
+        $siteName = get_bloginfo('name');
+        $siteUrl = get_site_url();
+        $currentTime = current_time('d/m/Y H:i:s');
+
+        $testMessage = "🧪 *Test Tin Nhắn Telegram*\n\n" .
+                      "Đây là tin nhắn test từ Security Bot.\n\n" .
+                      "📱 *Thông tin Site:*\n" .
+                      "• Tên: {$siteName}\n" .
+                      "• URL: {$siteUrl}\n" .
+                      "• Thời gian: {$currentTime}\n\n" .
+                      "Nếu bạn nhận được tin nhắn này, có nghĩa là bot đã hoạt động bình thường!";
+
+        try {
+            $result = $telegram->send($testMessage);
+
+            if ($result) {
+                return [
+                    'success' => true,
+                    'message' => 'Tin nhắn Telegram test đã được gửi thành công! Hãy kiểm tra Telegram chat của bạn.'
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Gửi tin nhắn Telegram test thất bại. Kiểm tra error log để xem chi tiết.'
+                ];
+            }
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Lỗi khi gửi tin nhắn Telegram: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Test gửi tin nhắn Email
+     */
+    private function testEmailSendMessage(): array
+    {
+        $emailConfig = get_option('wp_security_monitor_email_config', []);
+        $enabled = $emailConfig['enabled'] ?? true;
+
+        if (empty($emailConfig['to']) || !$enabled) {
+            return [
+                'success' => false,
+                'message' => 'Email config is incomplete or disabled. Please check email configuration.'
+            ];
+        }
+
+        $email = new EmailChannel();
+        $email->configure($emailConfig);
+
+        // Gửi email test với thông tin site
+        $siteName = get_bloginfo('name');
+        $siteUrl = get_site_url();
+        $currentTime = current_time('d/m/Y H:i:s');
+
+        $testMessage = "🧪 Test Email\n\n" .
+                      "Đây là email test từ Security Bot.\n\n" .
+                      "📧 Thông tin Site:\n" .
+                      "• Tên: {$siteName}\n" .
+                      "• URL: {$siteUrl}\n" .
+                      "• Thời gian: {$currentTime}\n\n" .
+                      "Nếu bạn nhận được email này, có nghĩa là bot đã hoạt động bình thường!";
+
+        try {
+            $result = $email->send($testMessage);
+
+            if ($result) {
+                return [
+                    'success' => true,
+                    'message' => 'Email test đã được gửi thành công! Hãy kiểm tra hộp thư của bạn.'
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Gửi email test thất bại. Kiểm tra error log để xem chi tiết.'
+                ];
+            }
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Lỗi khi gửi email: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Test gửi tin nhắn Slack
+     */
+    private function testSlackSendMessage(): array
+    {
+        $webhookUrl = CredentialManager::getCredential(CredentialManager::TYPE_SLACK_WEBHOOK, false);
+        $enabled = get_option('wp_security_monitor_slack_enabled', false);
+
+        if (empty($webhookUrl)) {
+            return [
+                'success' => false,
+                'message' => 'Slack config is incomplete. Please check webhook URL.'
+            ];
+        }
+
+        if (!$enabled) {
+            return [
+                'success' => false,
+                'message' => 'Slack channel is disabled. Please enable it first.'
+            ];
+        }
+
+        $config = [
+            'webhook_url' => $webhookUrl,
+            'channel' => get_option('wp_security_monitor_slack_channel', '#general'),
+            'username' => get_option('wp_security_monitor_slack_username', 'WP Security Monitor'),
+            'icon_emoji' => get_option('wp_security_monitor_slack_icon', ':shield:')
+        ];
+
+        $slack = new \Puleeno\SecurityBot\WebMonitor\Channels\SlackChannel();
+        $slack->configure($config);
+
+        // Gửi tin nhắn Slack test với thông tin site
+        $siteName = get_bloginfo('name');
+        $siteUrl = get_site_url();
+        $currentTime = current_time('d/m/Y H:i:s');
+
+        $testMessage = "🧪 *Test Tin Nhắn Slack*\n\n" .
+                      "Đây là tin nhắn test từ Security Bot.\n\n" .
+                      "💬 *Thông tin Site:*\n" .
+                      "• Tên: {$siteName}\n" .
+                      "• URL: {$siteUrl}\n" .
+                      "• Thời gian: {$currentTime}\n\n" .
+                      "Nếu bạn nhận được tin nhắn này, có nghĩa là bot đã hoạt động bình thường!";
+
+        try {
+            $result = $slack->send($testMessage);
+
+            if ($result) {
+                return [
+                    'success' => true,
+                    'message' => 'Tin nhắn Slack test đã được gửi thành công! Hãy kiểm tra Slack channel của bạn.'
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Gửi tin nhắn Slack test thất bại. Kiểm tra error log để xem chi tiết.'
+                ];
+            }
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Lỗi khi gửi tin nhắn Slack: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Test gửi tin nhắn Log
+     */
+    private function testLogSendMessage(): array
+    {
+        $config = get_option('wp_security_monitor_log_config', []);
+
+        if (!($config['enabled'] ?? true)) {
+            return [
+                'success' => false,
+                'message' => 'Log channel is disabled. Please enable it first.'
+            ];
+        }
+
+        $log = new LogChannel();
+        $log->configure($config);
+
+        // Gửi log test với thông tin site
+        $siteName = get_bloginfo('name');
+        $siteUrl = get_site_url();
+        $currentTime = current_time('d/m/Y H:i:s');
+
+        $testMessage = "🧪 Test Log\n\n" .
+                      "Đây là log test từ Security Bot.\n\n" .
+                      "📝 Thông tin Site:\n" .
+                      "• Tên: {$siteName}\n" .
+                      "• URL: {$siteUrl}\n" .
+                      "• Thời gian: {$currentTime}\n\n" .
+                      "Nếu bạn thấy log này, có nghĩa là bot đã hoạt động bình thường!";
+
+        try {
+            $result = $log->send($testMessage);
+
+            if ($result) {
+                return [
+                    'success' => true,
+                    'message' => 'Log test đã được ghi thành công! Kiểm tra log file để xem chi tiết.'
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Ghi log test thất bại. Kiểm tra error log để xem chi tiết.'
+                ];
+            }
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Lỗi khi ghi log: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Xử lý notifications theo cron job
+     *
+     * @return void
+     */
+    public function processNotificationsCron(): void
+    {
+        $processor = \Puleeno\SecurityBot\WebMonitor\NotificationProcessor::getInstance();
+        $processor->processNotificationsCron();
+    }
+
+        /**
+     * Xử lý suspicious redirect detection realtime
+     *
+     * @param array $issue
+     * @return void
+     */
+    public function handleSuspiciousRedirect(array $issue): void
+    {
+        try {
+            // Thêm backtrace vào issue data nếu có
+            $issueData = $issue['details'];
+            if (isset($issue['details']['backtrace'])) {
+                $issueData['backtrace'] = $issue['details']['backtrace'];
+            }
+
+            // Log issue ngay lập tức
+            $this->issueManager->recordIssue(
+                'realtime_redirect',
+                $issueData,
+                'high',
+                $issue['message']
+            );
+
+            // Gửi notification ngay lập tức cho các channel active
+            $this->ensureChannelsInitialized();
+
+            foreach ($this->channels as $channelName => $channel) {
+                if ($channel->isAvailable()) {
+                    $message = $this->formatNotificationMessage('RealtimeRedirectIssuer', $issue['details']);
+
+                    // Gửi notification trực tiếp cho realtime issues
+                    try {
+                        $result = $channel->send($message);
+
+                        if ($result) {
+                            error_log("WP Security Monitor: Realtime notification sent successfully via {$channelName}");
+                        } else {
+                            error_log("WP Security Monitor: Failed to send realtime notification via {$channelName}");
+                        }
+                    } catch (\Exception $e) {
+                        error_log("WP Security Monitor: Error sending realtime notification via {$channelName}: " . $e->getMessage());
+                    }
+                }
+            }
+
+        } catch (\Exception $e) {
+            error_log('WP Security Monitor: Error handling suspicious redirect - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Lấy danh sách tất cả issuers
+     *
+     * @return array
+     */
+    public function getIssuers(): array
+    {
+        return $this->issuers;
+    }
+
+    /**
+     * Xử lý user registration detection realtime
+     *
+     * @param array $userData
+     * @return void
+     */
+    public function handleUserRegistration(array $userData): void
+    {
+        try {
+            if (WP_DEBUG) {
+                error_log("[Bot] Handling user registration: " . json_encode($userData));
+            }
+
+            // Tạo issue data với thông tin user
+            $issueData = [
+                'user_id' => $userData['user_id'],
+                'username' => $userData['username'],
+                'email' => $userData['email'],
+                'display_name' => $userData['display_name'],
+                'roles' => $userData['roles'],
+                'registration_date' => $userData['registration_date'],
+                'ip_address' => $userData['ip_address'],
+                'user_agent' => $userData['user_agent'],
+                'referer' => $userData['referer'],
+                'backtrace' => $userData['backtrace'] ?? []
+            ];
+
+            // Log issue ngay lập tức
+            $this->issueManager->recordIssue(
+                'realtime_user_registration',
+                $issueData,
+                'medium',
+                "User mới được tạo: {$userData['username']} ({$userData['email']})"
+            );
+
+            // Gửi notification ngay lập tức cho các channel active
+            $this->ensureChannelsInitialized();
+
+            foreach ($this->channels as $channelName => $channel) {
+                if ($channel->isAvailable()) {
+                    $message = $this->formatNotificationMessage('RealtimeUserRegistrationIssuer', $issueData);
+
+                    // Gửi notification trực tiếp cho realtime issues
+                    try {
+                        $result = $channel->send($message);
+
+                        if ($result) {
+                            error_log("WP Security Monitor: Realtime user registration notification sent successfully via {$channelName}");
+                        } else {
+                            error_log("WP Security Monitor: Failed to send realtime user registration notification via {$channelName}");
+                        }
+                    } catch (\Exception $e) {
+                        error_log("WP Security Monitor: Error sending realtime user registration notification via {$channelName}: " . $e->getMessage());
+                    }
+                }
+            }
+
+        } catch (\Exception $e) {
+            error_log('WP Security Monitor: Error handling user registration - ' . $e->getMessage());
         }
     }
 }
