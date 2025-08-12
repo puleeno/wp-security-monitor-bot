@@ -12,7 +12,7 @@ $issueManager = IssueManager::getInstance();
 $whitelistManager = WhitelistManager::getInstance();
 
 // Xử lý actions
-if (isset($_POST['action']) && wp_verify_nonce($_POST['_wpnonce'], 'security_monitor_issues')) {
+if (isset($_POST['action']) && isset($_POST['issue_id']) && wp_verify_nonce($_POST['_wpnonce'], 'security_monitor_issues')) {
     $action = $_POST['action'];
     $issueId = intval($_POST['issue_id']);
 
@@ -54,56 +54,68 @@ if (isset($_POST['action']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
             break;
 
         case 'approve_domain':
-            $domain = sanitize_text_field($_POST['domain']);
-            $reason = sanitize_textarea_field($_POST['approve_reason'] ?? '');
-            if ($whitelistManager->approvePendingDomain($domain, $reason)) {
-                echo '<div class="notice notice-success"><p>Domain đã được approve và thêm vào whitelist!</p></div>';
+            if (isset($_POST['domain'])) {
+                $domain = sanitize_text_field($_POST['domain']);
+                $reason = sanitize_textarea_field($_POST['approve_reason'] ?? '');
+                if ($whitelistManager->approvePendingDomain($domain, $reason)) {
+                    echo '<div class="notice notice-success"><p>Domain đã được approve và thêm vào whitelist!</p></div>';
+                }
             }
             break;
 
         case 'reject_domain':
-            $domain = sanitize_text_field($_POST['domain']);
-            $reason = sanitize_textarea_field($_POST['reject_reason'] ?? '');
-            if ($whitelistManager->rejectPendingDomain($domain, $reason)) {
-                echo '<div class="notice notice-success"><p>Domain đã được reject!</p></div>';
+            if (isset($_POST['domain'])) {
+                $domain = sanitize_text_field($_POST['domain']);
+                $reason = sanitize_textarea_field($_POST['reject_reason'] ?? '');
+                if ($whitelistManager->rejectPendingDomain($domain, $reason)) {
+                    echo '<div class="notice notice-success"><p>Domain đã được reject!</p></div>';
+                }
             }
             break;
 
         case 'add_whitelist_domain':
-            $domain = sanitize_text_field($_POST['whitelist_domain']);
-            $reason = sanitize_textarea_field($_POST['whitelist_reason'] ?? '');
-            if ($whitelistManager->addToWhitelist($domain, $reason)) {
-                echo '<div class="notice notice-success"><p>Domain đã được thêm vào whitelist!</p></div>';
-            } else {
-                echo '<div class="notice notice-error"><p>Không thể thêm domain vào whitelist!</p></div>';
+            if (isset($_POST['whitelist_domain'])) {
+                $domain = sanitize_text_field($_POST['whitelist_domain']);
+                $reason = sanitize_textarea_field($_POST['whitelist_reason'] ?? '');
+                if ($whitelistManager->addToWhitelist($domain, $reason)) {
+                    echo '<div class="notice notice-success"><p>Domain đã được approve và thêm vào whitelist!</p></div>';
+                } else {
+                    echo '<div class="notice notice-error"><p>Không thể thêm domain vào whitelist!</p></div>';
+                }
             }
             break;
 
         case 'remove_whitelist_domain':
-            $domain = sanitize_text_field($_POST['domain']);
-            if ($whitelistManager->removeFromWhitelist($domain)) {
-                echo '<div class="notice notice-success"><p>Domain đã được xóa khỏi whitelist!</p></div>';
+            if (isset($_POST['domain'])) {
+                $domain = sanitize_text_field($_POST['domain']);
+                if ($whitelistManager->removeFromWhitelist($domain)) {
+                    echo '<div class="notice notice-success"><p>Domain đã được xóa khỏi whitelist!</p></div>';
+                }
             }
             break;
 
         case 'ignore_file_hash':
-            $fileHash = sanitize_text_field($_POST['file_hash']);
-            $evalIssuer = new EvalFunctionIssuer();
-            $evalIssuer->addIgnoredHash($fileHash);
+            if (isset($_POST['file_hash']) && isset($_POST['issue_id'])) {
+                $fileHash = sanitize_text_field($_POST['file_hash']);
+                $evalIssuer = new EvalFunctionIssuer();
+                $evalIssuer->addIgnoredHash($fileHash);
 
-            // Cũng ignore issue hiện tại
-            $reason = "File đã được kiểm tra và xác nhận an toàn";
-            if ($issueManager->ignoreIssue($issueId, $reason)) {
-                echo '<div class="notice notice-success"><p>File hash đã được thêm vào ignore list và issue đã được ignore!</p></div>';
+                // Cũng ignore issue hiện tại
+                $reason = "File đã được kiểm tra và xác nhận an toàn";
+                if ($issueManager->ignoreIssue($issueId, $reason)) {
+                    echo '<div class="notice notice-success"><p>File hash đã được thêm vào ignore list và issue đã được ignore!</p></div>';
+                }
             }
             break;
 
         case 'allow_rejected_domain':
-            $domain = sanitize_text_field($_POST['domain']);
-            if ($whitelistManager->removeFromRejected($domain)) {
-                echo '<div class="notice notice-success"><p>Domain "' . esc_html($domain) . '" đã được xóa khỏi rejected list!</p></div>';
-            } else {
-                echo '<div class="notice notice-error"><p>Không thể xóa domain khỏi rejected list!</p></div>';
+            if (isset($_POST['domain'])) {
+                $domain = sanitize_text_field($_POST['domain']);
+                if ($whitelistManager->removeFromRejected($domain)) {
+                    echo '<div class="notice notice-success"><p>Domain "' . esc_html($domain) . '" đã được xóa khỏi rejected list!</p></div>';
+                } else {
+                    echo '<div class="notice notice-error"><p>Không thể xóa domain khỏi rejected list!</p></div>';
+                }
             }
             break;
     }

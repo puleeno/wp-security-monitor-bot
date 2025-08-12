@@ -791,6 +791,14 @@ class Bot extends MonitorAbstract
             'timestamp' => current_time('mysql')
         ];
 
+        // Debug logging
+        if (WP_DEBUG) {
+            error_log("[Bot] queueNotificationsForIssue() - issuerName: " . $issuerName);
+            error_log("[Bot] queueNotificationsForIssue() - issueId: " . $issueId);
+            error_log("[Bot] queueNotificationsForIssue() - message: " . $message);
+            error_log("[Bot] queueNotificationsForIssue() - context: " . json_encode($context));
+        }
+
         // Thêm notification cho mỗi channel active
         foreach ($this->channels as $channel) {
             if ($channel->isAvailable()) {
@@ -817,27 +825,62 @@ class Bot extends MonitorAbstract
      */
     private function formatNotificationMessage(string $issuerName, array $issueData): string
     {
+        // Debug logging
+        if (WP_DEBUG) {
+            error_log("[Bot] formatNotificationMessage() - issuerName: " . $issuerName);
+            error_log("[Bot] formatNotificationMessage() - issueData: " . json_encode($issueData));
+        }
+
         $title = $issueData['title'] ?? 'Security Issue Detected';
         $description = $issueData['description'] ?? 'A security issue has been detected';
         $severity = $issueData['severity'] ?? 'medium';
         $filePath = $issueData['file_path'] ?? '';
         $ipAddress = $issueData['ip_address'] ?? '';
+        $username = $issueData['username'] ?? '';
+        $email = $issueData['email'] ?? '';
+        $roles = $issueData['roles'] ?? '';
 
-        $message = "*🚨 Security Alert*\n\n";
-        $message .= "*Issuer:* {$issuerName}\n";
-        $message .= "*Title:* {$title}\n";
-        $message .= "*Description:* {$description}\n";
-        $message .= "*Severity:* {$severity}\n";
+        // Emoji cho severity
+        $severityEmoji = [
+            'low' => '🟢',
+            'medium' => '🟡',
+            'high' => '🔴',
+            'critical' => '🚨'
+        ];
+        $severityIcon = $severityEmoji[$severity] ?? '🟡';
 
+        $message = "🔒 *SECURITY ALERT*\n";
+        $message .= str_repeat('─', 30) . "\n\n";
+
+        $message .= "📋 *Issue Details*\n";
+        $message .= "• *Type:* {$issuerName}\n";
+        $message .= "• *Title:* {$title}\n";
+        $message .= "• *Description:* {$description}\n";
+        $message .= "• *Severity:* {$severityIcon} {$severity}\n";
+
+        // Thông tin bổ sung nếu có
         if (!empty($filePath)) {
-            $message .= "*File:* `{$filePath}`\n";
+            $message .= "• *File:* `{$filePath}`\n";
         }
 
         if (!empty($ipAddress)) {
-            $message .= "*IP Address:* `{$ipAddress}`\n";
+            $message .= "• *IP Address:* `{$ipAddress}`\n";
         }
 
-        $message .= "\n*Detected at:* " . current_time('mysql');
+        if (!empty($username)) {
+            $message .= "• *Username:* `{$username}`\n";
+        }
+
+        if (!empty($email)) {
+            $message .= "• *Email:* `{$email}`\n";
+        }
+
+        if (!empty($roles)) {
+            $message .= "• *Roles:* `{$roles}`\n";
+        }
+
+        $message .= "\n⏰ *Detected:* " . current_time('d/m/Y H:i:s');
+        $message .= "\n🌐 *Site:* " . home_url();
 
         return $message;
     }
@@ -1478,38 +1521,168 @@ class Bot extends MonitorAbstract
                 $issueData['backtrace'] = $issue['details']['backtrace'];
             }
 
+            // Xử lý domain whitelist
+            $this->handleRedirectDomainWhitelist($issueData);
+
             // Log issue ngay lập tức
-            $this->issueManager->recordIssue(
+            $issueId = $this->issueManager->recordIssue(
                 'realtime_redirect',
                 $issueData,
                 'high',
                 $issue['message']
             );
 
-            // Gửi notification ngay lập tức cho các channel active
-            $this->ensureChannelsInitialized();
+            // Chỉ gửi notification nếu đây là issue mới (không phải update)
+            if ($issueId && $this->isNewIssue($issueId)) {
+                // Tạo notification records cho tất cả channels active
+                $this->ensureChannelsInitialized();
+                $notificationManager = \Puleeno\SecurityBot\WebMonitor\NotificationManager::getInstance();
 
-            foreach ($this->channels as $channelName => $channel) {
-                if ($channel->isAvailable()) {
-                    $message = $this->formatNotificationMessage('RealtimeRedirectIssuer', $issue['details']);
+                foreach ($this->channels as $channelName => $channel) {
+                    if ($channel->isAvailable()) {
+                        $message = $this->formatNotificationMessage('RealtimeRedirectIssuer', $issue);
+                        $context = [
+                            'issuer' => 'RealtimeRedirectIssuer',
+                            'issue_data' => $issueData,
+                            'timestamp' => current_time('mysql'),
+                            'is_realtime' => true
+                        ];
 
-                    // Gửi notification trực tiếp cho realtime issues
-                    try {
-                        $result = $channel->send($message);
+                        // Tạo notification record với status 'sent' ngay lập tức
+                        $notificationManager->queueNotification(
+                            $channelName,
+                            $issueId,
+                            $message,
+                            $context
+                        );
 
-                        if ($result) {
-                            error_log("WP Security Monitor: Realtime notification sent successfully via {$channelName}");
-                        } else {
-                            error_log("WP Security Monitor: Failed to send realtime notification via {$channelName}");
+                        // Gửi notification trực tiếp
+                        try {
+                            $result = $channel->send($message, $context);
+
+                            if ($result) {
+                                // Cập nhật status thành 'sent'
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'sent'
+                                );
+                                error_log("WP Security Monitor: Realtime notification sent successfully via {$channelName}");
+                            } else {
+                                // Cập nhật status thành 'failed'
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'failed',
+                                    'Failed to send notification'
+                                );
+                                error_log("WP Security Monitor: Failed to send realtime notification via {$channelName}");
+                            }
+                        } catch (\Exception $e) {
+                            // Cập nhật status thành 'failed'
+                            $notificationManager->updateNotificationStatus(
+                                $notificationManager->getLastInsertedNotificationId(),
+                                'failed',
+                                'Exception: ' . $e->getMessage()
+                            );
+                            error_log("WP Security Monitor: Error sending realtime notification via {$channelName}: " . $e->getMessage());
                         }
-                    } catch (\Exception $e) {
-                        error_log("WP Security Monitor: Error sending realtime notification via {$channelName}: " . $e->getMessage());
                     }
                 }
+            } else if ($issueId) {
+                // Issue đã tồn tại, chỉ log update
+                error_log("WP Security Monitor: Updated existing redirect issue ID: {$issueId}");
             }
 
         } catch (\Exception $e) {
             error_log('WP Security Monitor: Error handling suspicious redirect - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Kiểm tra xem issue có phải mới không
+     *
+     * @param int $issueId
+     * @return bool
+     */
+    private function isNewIssue(int $issueId): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'security_monitor_issues';
+        $detectionCount = $wpdb->get_var($wpdb->prepare(
+            "SELECT detection_count FROM {$table} WHERE id = %d",
+            $issueId
+        ));
+
+        // Issue mới nếu detection_count = 1
+        return $detectionCount == 1;
+    }
+
+    /**
+     * Xử lý domain whitelist cho redirect
+     *
+     * @param array $issueData
+     * @return void
+     */
+    private function handleRedirectDomainWhitelist(array $issueData): void
+    {
+        try {
+            $whitelistManager = \Puleeno\SecurityBot\WebMonitor\WhitelistManager::getInstance();
+
+            // Lấy redirect URL từ issue data
+            $redirectUrl = $issueData['to_url'] ?? '';
+            if (empty($redirectUrl)) {
+                return;
+            }
+
+            // Trích xuất domain từ URL
+            $domain = $whitelistManager->extractDomain($redirectUrl);
+            if (empty($domain)) {
+                return;
+            }
+
+            // Kiểm tra xem domain có trong whitelist không
+            if ($whitelistManager->isDomainWhitelisted($domain)) {
+                // Domain đã được whitelist, ghi lại usage
+                $whitelistManager->recordDomainUsage($domain);
+                return;
+            }
+
+            // Kiểm tra xem domain có bị reject không
+            if ($whitelistManager->isDomainRejected($domain)) {
+                // Domain đã bị reject, không cần thêm vào pending
+                return;
+            }
+
+            // Kiểm tra xem domain có trong pending không
+            if ($whitelistManager->isDomainPending($domain)) {
+                // Domain đã trong pending, cập nhật detection count
+                $whitelistManager->addPendingDomain($domain, [
+                    'source' => 'realtime_redirect',
+                    'redirect_url' => $redirectUrl,
+                    'from_url' => $issueData['from_url'] ?? '',
+                    'user_agent' => $issueData['user_agent'] ?? '',
+                    'ip_address' => $issueData['ip_address'] ?? '',
+                    'timestamp' => current_time('mysql')
+                ]);
+                return;
+            }
+
+            // Domain mới, thêm vào pending list để admin review
+            $whitelistManager->addPendingDomain($domain, [
+                'source' => 'realtime_redirect',
+                'redirect_url' => $redirectUrl,
+                'from_url' => $issueData['from_url'] ?? '',
+                'user_agent' => $issueData['user_agent'] ?? '',
+                'ip_address' => $issueData['ip_address'] ?? '',
+                'timestamp' => current_time('mysql')
+            ]);
+
+            if (WP_DEBUG) {
+                error_log("WP Security Monitor: Added domain '{$domain}' to pending list for review");
+            }
+
+        } catch (\Exception $e) {
+            error_log('WP Security Monitor: Error handling redirect domain whitelist - ' . $e->getMessage());
         }
     }
 
@@ -1551,33 +1724,71 @@ class Bot extends MonitorAbstract
             ];
 
             // Log issue ngay lập tức
-            $this->issueManager->recordIssue(
+            $issueId = $this->issueManager->recordIssue(
                 'realtime_user_registration',
                 $issueData,
                 'medium',
                 "User mới được tạo: {$userData['username']} ({$userData['email']})"
             );
 
-            // Gửi notification ngay lập tức cho các channel active
-            $this->ensureChannelsInitialized();
+            // Chỉ gửi notification nếu đây là issue mới (không phải update)
+            if ($issueId && $this->isNewIssue($issueId)) {
+                // Tạo notification records cho tất cả channels active
+                $this->ensureChannelsInitialized();
+                $notificationManager = \Puleeno\SecurityBot\WebMonitor\NotificationManager::getInstance();
 
-            foreach ($this->channels as $channelName => $channel) {
-                if ($channel->isAvailable()) {
-                    $message = $this->formatNotificationMessage('RealtimeUserRegistrationIssuer', $issueData);
+                foreach ($this->channels as $channelName => $channel) {
+                    if ($channel->isAvailable()) {
+                        $message = $this->formatNotificationMessage('RealtimeUserRegistrationIssuer', $issueData);
+                        $context = [
+                            'issuer' => 'RealtimeUserRegistrationIssuer',
+                            'issue_data' => $issueData,
+                            'timestamp' => current_time('mysql'),
+                            'is_realtime' => true
+                        ];
 
-                    // Gửi notification trực tiếp cho realtime issues
-                    try {
-                        $result = $channel->send($message);
+                        // Tạo notification record với status 'sent' ngay lập tức
+                        $notificationManager->queueNotification(
+                            $channelName,
+                            $issueId,
+                            $message,
+                            $context
+                        );
 
-                        if ($result) {
-                            error_log("WP Security Monitor: Realtime user registration notification sent successfully via {$channelName}");
-                        } else {
-                            error_log("WP Security Monitor: Failed to send realtime user registration notification via {$channelName}");
+                        // Gửi notification trực tiếp
+                        try {
+                            $result = $channel->send($message, $context);
+
+                            if ($result) {
+                                // Cập nhật status thành 'sent'
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'sent'
+                                );
+                                error_log("WP Security Monitor: Realtime user registration notification sent successfully via {$channelName}");
+                            } else {
+                                // Cập nhật status thành 'failed'
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'failed',
+                                    'Failed to send notification'
+                                );
+                                error_log("WP Security Monitor: Failed to send realtime user registration notification via {$channelName}");
+                            }
+                        } catch (\Exception $e) {
+                            // Cập nhật status thành 'failed'
+                            $notificationManager->updateNotificationStatus(
+                                $notificationManager->getLastInsertedNotificationId(),
+                                'failed',
+                                'Exception: ' . $e->getMessage()
+                            );
+                            error_log("WP Security Monitor: Error sending realtime user registration notification via {$channelName}: " . $e->getMessage());
                         }
-                    } catch (\Exception $e) {
-                        error_log("WP Security Monitor: Error sending realtime user registration notification via {$channelName}: " . $e->getMessage());
                     }
                 }
+            } else if ($issueId) {
+                // Issue đã tồn tại, chỉ log update
+                error_log("WP Security Monitor: Updated existing user registration issue ID: {$issueId}");
             }
 
         } catch (\Exception $e) {

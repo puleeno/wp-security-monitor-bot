@@ -49,15 +49,18 @@ class IssueManager
         // Tạo hash duy nhất cho issue
         $issueHash = $this->generateIssueHash($issuerName, $issueData);
 
+        // Tạo hash cho line code cụ thể
+        $lineCodeHash = $this->generateLineCodeHash($issuerName, $issueData);
+
         // Kiểm tra ignore rules trước
         if ($this->isIgnored($issuerName, $issueData, $issueHash)) {
             return false;
         }
 
-        // Kiểm tra issue đã tồn tại chưa
+        // Kiểm tra issue đã tồn tại chưa (theo line_code_hash)
         $existingId = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM {$this->issuesTable} WHERE issue_hash = %s",
-            $issueHash
+            "SELECT id FROM {$this->issuesTable} WHERE line_code_hash = %s",
+            $lineCodeHash
         ));
 
         $now = current_time('mysql');
@@ -81,6 +84,7 @@ class IssueManager
             // Tạo issue mới
             $data = [
                 'issue_hash' => $issueHash,
+                'line_code_hash' => $lineCodeHash,
                 'issuer_name' => $issuerName,
                 'issue_type' => $this->extractIssueType($issueData),
                 'severity' => $this->determineSeverity($issuerName, $issueData),
@@ -467,6 +471,57 @@ class IssueManager
     }
 
     /**
+     * Tạo hash cho line code cụ thể
+     *
+     * @param string $issuerName
+     * @param array $issueData
+     * @return string
+     */
+    private function generateLineCodeHash(string $issuerName, array $issueData): string
+    {
+        $backtrace = $this->extractBacktrace($issueData);
+
+        if (empty($backtrace)) {
+            // Nếu không có backtrace, sử dụng issue_hash
+            return $this->generateIssueHash($issuerName, $issueData);
+        }
+
+        // Tìm line code đầu tiên từ backtrace (không phải từ internal classes)
+        $backtraceArray = is_string($backtrace) ? json_decode($backtrace, true) : $backtrace;
+
+        if (is_array($backtraceArray)) {
+            foreach ($backtraceArray as $frame) {
+                if (isset($frame['file']) && isset($frame['line'])) {
+                    // Loại bỏ các frames từ internal classes
+                    $excludeClasses = ['IssueManager', 'Bot', 'RealtimeRedirectIssuer', 'RealtimeUserRegistrationIssuer'];
+                    $excludePaths = ['wp-content/plugins/wp-security-monitor-bot'];
+
+                    $isExcluded = false;
+                    foreach ($excludePaths as $excludePath) {
+                        if (strpos($frame['file'], $excludePath) !== false) {
+                            $isExcluded = true;
+                            break;
+                        }
+                    }
+
+                    if (!$isExcluded) {
+                        // Tạo hash từ file path và line number
+                        $lineCodeData = [
+                            'file' => $frame['file'],
+                            'line' => $frame['line'],
+                            'issuer' => $issuerName
+                        ];
+                        return md5(serialize($lineCodeData));
+                    }
+                }
+            }
+        }
+
+        // Fallback: sử dụng issue_hash
+        return $this->generateIssueHash($issuerName, $issueData);
+    }
+
+    /**
      * Extract methods
      */
     private function extractTitle(array $issueData): string
@@ -476,12 +531,43 @@ class IssueManager
 
     private function extractDescription(array $issueData): string
     {
-        return $issueData['description'] ?? $issueData['details'] ?? '';
+        if (isset($issueData['description'])) {
+            return is_string($issueData['description']) ? $issueData['description'] : json_encode($issueData['description'], JSON_UNESCAPED_UNICODE);
+        }
+
+        if (isset($issueData['details'])) {
+            // Nếu details là array, convert thành JSON string
+            if (is_array($issueData['details'])) {
+                return json_encode($issueData['details'], JSON_UNESCAPED_UNICODE);
+            }
+            // Nếu details là string, return trực tiếp
+            if (is_string($issueData['details'])) {
+                return $issueData['details'];
+            }
+            // Nếu details là kiểu dữ liệu khác, convert thành string
+            return (string) $issueData['details'];
+        }
+
+        return '';
     }
 
     private function extractDetails(array $issueData): string
     {
-        return $issueData['details'] ?? json_encode($issueData);
+        if (isset($issueData['details'])) {
+            // Nếu details là array, convert thành JSON string
+            if (is_array($issueData['details'])) {
+                return json_encode($issueData['details'], JSON_UNESCAPED_UNICODE);
+            }
+            // Nếu details là string, return trực tiếp
+            if (is_string($issueData['details'])) {
+                return $issueData['details'];
+            }
+            // Nếu details là kiểu dữ liệu khác, convert thành string
+            return (string) $issueData['details'];
+        }
+
+        // Fallback: convert toàn bộ issueData thành JSON string
+        return json_encode($issueData, JSON_UNESCAPED_UNICODE);
     }
 
     /**
@@ -537,9 +623,24 @@ class IssueManager
             return $issueData['ip'];
         }
 
-        // Extract from details string
-        if (isset($issueData['details']) && preg_match('/IP\s+([0-9.]+)/', $issueData['details'], $matches)) {
-            return $matches[1];
+        // Extract from details array or string
+        if (isset($issueData['details'])) {
+            // Nếu details là array, tìm ip_address
+            if (is_array($issueData['details'])) {
+                if (isset($issueData['details']['ip_address'])) {
+                    return $issueData['details']['ip_address'];
+                }
+                // Nếu không có ip_address, tìm trong các key khác
+                foreach ($issueData['details'] as $key => $value) {
+                    if (is_string($value) && preg_match('/^(\d{1,3}\.){3}\d{1,3}$/', $value)) {
+                        return $value;
+                    }
+                }
+            }
+            // Nếu details là string, extract bằng regex
+            elseif (is_string($issueData['details']) && preg_match('/IP\s+([0-9.]+)/', $issueData['details'], $matches)) {
+                return $matches[1];
+            }
         }
 
         return $_SERVER['REMOTE_ADDR'] ?? null;

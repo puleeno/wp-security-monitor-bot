@@ -101,6 +101,13 @@ class NotificationProcessor
         $message = $notification['message'];
         $context = json_decode($notification['context'], true) ?: [];
 
+        // Debug logging
+        if (WP_DEBUG) {
+            error_log("[NotificationProcessor] Processing notification {$notificationId} for channel {$channelName}");
+            error_log("[NotificationProcessor] Message: " . $message);
+            error_log("[NotificationProcessor] Context: " . json_encode($context));
+        }
+
         try {
             // Lấy channel từ bot
             $channel = $this->bot->getChannel($channelName);

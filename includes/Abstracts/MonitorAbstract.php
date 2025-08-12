@@ -85,12 +85,12 @@ abstract class MonitorAbstract implements MonitorInterface
 
         foreach ($this->channels as $channel) {
             $channelName = $channel->getName();
-            
+
             // Debug: Log channel check
             if (WP_DEBUG) {
                 error_log("[Monitor Debug] Checking channel: {$channelName}");
             }
-            
+
             if (!$channel->isAvailable()) {
                 if (WP_DEBUG) {
                     error_log("[Monitor Debug] Channel {$channelName} is NOT available - skipping");
@@ -109,7 +109,7 @@ abstract class MonitorAbstract implements MonitorInterface
                     'timestamp' => time(),
                     'site_url' => home_url()
                 ]);
-                
+
                 if (WP_DEBUG) {
                     error_log("[Monitor Debug] Channel {$channelName} send result: " . ($result ? 'SUCCESS' : 'FAILED'));
                 }
@@ -120,7 +120,7 @@ abstract class MonitorAbstract implements MonitorInterface
                 }
             }
         }
-        
+
         if (WP_DEBUG) {
             error_log("[Monitor Debug] Notification sending completed for issuer: {$issuerName}");
         }
@@ -138,12 +138,16 @@ abstract class MonitorAbstract implements MonitorInterface
         $siteUrl = home_url();
         $siteName = get_bloginfo('name');
 
-        $message = "🚨 *Cảnh báo bảo mật - {$siteName}*\n\n";
-        $message .= "📍 *Website:* {$siteUrl}\n";
-        $message .= "🔍 *Phát hiện bởi:* {$issuerName}\n";
-        $message .= "⏰ *Thời gian:* " . date('d/m/Y H:i:s') . "\n\n";
+        $message = "🔒 *SECURITY ALERT*\n";
+        $message .= str_repeat('─', 30) . "\n\n";
 
-        $message .= "📋 *Chi tiết vấn đề:*\n";
+        $message .= "📋 *System Information*\n";
+        $message .= "• *Website:* {$siteName}\n";
+        $message .= "• *URL:* {$siteUrl}\n";
+        $message .= "• *Detected by:* {$issuerName}\n";
+        $message .= "• *Time:* " . date('d/m/Y H:i:s') . "\n\n";
+
+        $message .= "🚨 *Security Issues Detected:*\n";
         foreach ($issues as $issue) {
             if (is_array($issue)) {
                 $message .= "• " . ($issue['message'] ?? 'Unknown issue') . "\n";
@@ -154,6 +158,8 @@ abstract class MonitorAbstract implements MonitorInterface
                 $message .= "• {$issue}\n";
             }
         }
+
+        $message .= "\n⚠️ *Action Required:* Please review and take appropriate security measures.";
 
         return $message;
     }

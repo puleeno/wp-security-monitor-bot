@@ -61,6 +61,17 @@ class NotificationManager
     }
 
     /**
+     * Lấy ID của notification vừa được insert
+     *
+     * @return int|null
+     */
+    public function getLastInsertedNotificationId(): ?int
+    {
+        global $wpdb;
+        return $wpdb->insert_id ?: null;
+    }
+
+    /**
      * Lấy danh sách notifications pending
      *
      * @param int $limit
@@ -102,17 +113,40 @@ class NotificationManager
             $data['sent_at'] = current_time('mysql');
         } elseif ($status === 'failed' || $status === 'retry') {
             $data['last_attempt'] = current_time('mysql');
-            $data['retry_count'] = $wpdb->prepare('retry_count + 1');
+            // Không thể increment trực tiếp trong $data array
+            // Sẽ xử lý riêng cho retry_count
             if ($errorMessage) {
                 $data['error_message'] = $errorMessage;
             }
         }
 
-        $updated = $wpdb->update(
-            $this->notificationsTable,
-            $data,
-            ['id' => $notificationId]
-        );
+        // Xử lý update với retry_count increment nếu cần
+        if ($status === 'failed' || $status === 'retry') {
+            // Sử dụng raw SQL để increment retry_count
+            if ($errorMessage) {
+                $sql = $wpdb->prepare(
+                    "UPDATE {$this->notificationsTable}
+                     SET status = %s, updated_at = %s, last_attempt = %s, retry_count = retry_count + 1, error_message = %s
+                     WHERE id = %d",
+                    $status, current_time('mysql'), current_time('mysql'), $errorMessage, $notificationId
+                );
+            } else {
+                $sql = $wpdb->prepare(
+                    "UPDATE {$this->notificationsTable}
+                     SET status = %s, updated_at = %s, last_attempt = %s, retry_count = retry_count + 1
+                     WHERE id = %d",
+                    $status, current_time('mysql'), current_time('mysql'), $notificationId
+                );
+            }
+            $updated = $wpdb->query($sql);
+        } else {
+            // Update bình thường cho các status khác
+            $updated = $wpdb->update(
+                $this->notificationsTable,
+                $data,
+                ['id' => $notificationId]
+            );
+        }
 
         if (WP_DEBUG) {
             error_log("[NotificationManager] Updated notification {$notificationId} status to: {$status}");
