@@ -653,7 +653,7 @@ if (isset($_POST['security_monitor_action']) && wp_verify_nonce($_POST['_wpnonce
                     <li>
                         <strong><?php echo esc_html(is_array($issue) ? $issue['message'] : $issue); ?></strong>
                         <?php if (is_array($issue) && isset($issue['details'])): ?>
-                            <br><small><?php echo esc_html($issue['details']); ?></small>
+                            <br><small><?php echo esc_html(is_string($issue['details']) ? $issue['details'] : var_export($issue['details'], true)); ?></small>
                         <?php endif; ?>
                     </li>
                 <?php endforeach; ?>
