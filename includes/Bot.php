@@ -10,7 +10,6 @@ use Puleeno\SecurityBot\WebMonitor\Channels\LogChannel;
 use Puleeno\SecurityBot\WebMonitor\Security\SecureConfigManager;
 use Puleeno\SecurityBot\WebMonitor\Security\CredentialManager;
 use Puleeno\SecurityBot\WebMonitor\Security\AccessControl;
-use Puleeno\SecurityBot\WebMonitor\Security\TwoFactorAuth;
 use Puleeno\SecurityBot\WebMonitor\Issuers\ExternalRedirectIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\LoginAttemptIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\FileChangeIssuer;
@@ -51,7 +50,6 @@ class Bot extends MonitorAbstract
 
         // Initialize security systems
         AccessControl::init();
-        TwoFactorAuth::init();
     }
 
     public static function getInstance()
@@ -876,7 +874,8 @@ class Bot extends MonitorAbstract
         }
 
         if (!empty($roles)) {
-            $message .= "• *Roles:* `{$roles}`\n";
+            $rolesStr = is_string($roles) ? $roles : var_export($roles, true);
+            $message .= "• *Roles:* `{$rolesStr}`\n";
         }
 
         $message .= "\n⏰ *Detected:* " . current_time('d/m/Y H:i:s');

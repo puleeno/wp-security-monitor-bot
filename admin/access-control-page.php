@@ -4,7 +4,6 @@ if (!defined('ABSPATH')) {
 }
 
 use Puleeno\SecurityBot\WebMonitor\Security\AccessControl;
-use Puleeno\SecurityBot\WebMonitor\Security\TwoFactorAuth;
 
 // Handle actions
 if (isset($_POST['action']) && wp_verify_nonce($_POST['_wpnonce'], 'security_monitor_access_control')) {
@@ -15,23 +14,10 @@ if (isset($_POST['action']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
             echo '<div class="notice notice-success"><p>IP whitelist updated successfully!</p></div>';
             break;
 
-        case 'setup_2fa':
-            $method = sanitize_text_field($_POST['2fa_method']);
-            $userId = get_current_user_id();
-
-            if ($method === 'email') {
-                TwoFactorAuth::enable($userId, 'email');
-                echo '<div class="notice notice-success"><p>Email 2FA enabled successfully!</p></div>';
-            } elseif ($method === 'totp') {
-                // This will be handled via AJAX
-                echo '<div class="notice notice-info"><p>Please complete TOTP setup below.</p></div>';
-            }
-            break;
-
-        case 'disable_2fa':
-            $userId = get_current_user_id();
-            TwoFactorAuth::disable($userId);
-            echo '<div class="notice notice-success"><p>2FA disabled successfully!</p></div>';
+        default:
+            // 2FA functionality has been removed from the plugin. Ignore any
+            // 2FA-related actions to avoid errors and inform the admin.
+            echo '<div class="notice notice-warning"><p>Two-Factor Authentication (2FA) has been removed from this plugin. Related actions are no-ops.</p></div>';
             break;
     }
 }
@@ -39,8 +25,8 @@ if (isset($_POST['action']) && wp_verify_nonce($_POST['_wpnonce'], 'security_mon
 $currentUser = wp_get_current_user();
 $ipWhitelist = get_option('wp_security_monitor_ip_whitelist', []);
 $userIP = AccessControl::getUserIP();
-$twoFactorEnabled = TwoFactorAuth::isEnabled($currentUser->ID);
-$twoFactorMethod = get_user_meta($currentUser->ID, 'wp_security_monitor_2fa_method', true);
+$twoFactorEnabled = false; // 2FA removed
+$twoFactorMethod = '';
 
 // Get recent audit logs
 $recentLogs = AccessControl::getAuditLogs([], 20);
@@ -140,66 +126,10 @@ $recentLogs = AccessControl::getAuditLogs([], 20);
     <!-- Two-Factor Authentication -->
     <div class="card" style="margin-top: 20px;">
         <h2 class="title">🔒 Two-Factor Authentication (2FA)</h2>
-
-        <?php if ($twoFactorEnabled): ?>
-            <div style="background: #d1f2eb; padding: 15px; border-left: 4px solid #27ae60; margin-bottom: 20px;">
-                <h4>✅ 2FA Enabled</h4>
-                <p><strong>Method:</strong> <?php echo esc_html(ucfirst($twoFactorMethod)); ?></p>
-                <p>Your account is protected with two-factor authentication.</p>
-            </div>
-
-            <form method="post" style="display: inline;">
-                <?php wp_nonce_field('security_monitor_access_control'); ?>
-                <input type="hidden" name="action" value="disable_2fa">
-                <button type="submit" class="button button-secondary"
-                        onclick="return confirm('Are you sure you want to disable 2FA? This will reduce your account security.')">
-                    Disable 2FA
-                </button>
-            </form>
-
-            <button type="button" class="button" onclick="generateBackupCodes()">
-                Generate New Backup Codes
-            </button>
-
-        <?php else: ?>
-            <div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin-bottom: 20px;">
-                <h4>⚠️ 2FA Not Enabled</h4>
-                <p>Enable two-factor authentication để enhance security cho sensitive operations.</p>
-            </div>
-
-            <h3>Choose 2FA Method:</h3>
-
-            <!-- Email OTP -->
-            <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0;">
-                <h4>📧 Email OTP</h4>
-                <p>Receive verification codes via email. Simple và không requires additional apps.</p>
-
-                <form method="post" style="display: inline;">
-                    <?php wp_nonce_field('security_monitor_access_control'); ?>
-                    <input type="hidden" name="action" value="setup_2fa">
-                    <input type="hidden" name="2fa_method" value="email">
-                    <button type="submit" class="button button-primary">Enable Email 2FA</button>
-                </form>
-            </div>
-
-            <!-- TOTP -->
-            <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0;">
-                <h4>📱 Authenticator App (TOTP)</h4>
-                <p>Use apps như Google Authenticator, Authy, or 1Password. More secure than email.</p>
-
-                <button type="button" class="button button-primary" onclick="setupTOTP()">
-                    Setup Authenticator App
-                </button>
-
-                <div id="totp-setup" style="display: none; margin-top: 20px;">
-                    <h4>TOTP Setup</h4>
-                    <div id="totp-qr-code"></div>
-                    <p>Scan the QR code với your authenticator app, then enter verification code:</p>
-                    <input type="text" id="totp-verification" placeholder="Enter 6-digit code" maxlength="6">
-                    <button type="button" class="button" onclick="verifyTOTP()">Verify & Enable</button>
-                </div>
-            </div>
-        <?php endif; ?>
+        <div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin-bottom: 20px;">
+            <h4>⚠️ 2FA Removed</h4>
+            <p>Two-Factor Authentication has been removed from this plugin. Existing 2FA settings are ignored. If you relied on 2FA for extra protection, consider enabling site-wide 2FA via a dedicated security plugin.</p>
+        </div>
     </div>
 
     <!-- User Capabilities -->
@@ -386,9 +316,7 @@ $recentLogs = AccessControl::getAuditLogs([], 20);
 .event-type-user_logout { color: #95a5a6; }
 .event-type-access_denied_ip { color: #e74c3c; }
 .event-type-session_timeout { color: #f39c12; }
-.event-type-2fa_enabled { color: #3498db; }
-.event-type-2fa_verified { color: #27ae60; }
-.event-type-2fa_failed { color: #e74c3c; }
+/* 2FA event types removed */
 </style>
 
 <script>

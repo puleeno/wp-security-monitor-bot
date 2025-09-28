@@ -543,22 +543,17 @@ class AccessControl
             return true; // No 2FA required
         }
 
-        // Check if 2FA is enabled for user
+        // 2FA feature has been removed. For backward compatibility we allow the
+        // operation but log that a previously-sensitive operation was executed
+        // without 2FA enforcement.
         $userId = get_current_user_id();
-        $twoFactorEnabled = get_user_meta($userId, 'wp_security_monitor_2fa_enabled', true);
+        self::logSecurityEvent('2fa_removed', [
+            'user_id' => $userId,
+            'operation' => $operation,
+            'message' => '2FA enforcement removed by plugin configuration'
+        ]);
 
-        if (!$twoFactorEnabled) {
-            // 2FA not enabled, allow for now but log warning
-            self::logSecurityEvent('2fa_warning', [
-                'user_id' => $userId,
-                'operation' => $operation,
-                'message' => '2FA not enabled for sensitive operation'
-            ]);
-            return true;
-        }
-
-        // Check 2FA token
-        return self::verify2FAToken();
+        return true;
     }
 
     /**
@@ -568,17 +563,8 @@ class AccessControl
      */
     private static function verify2FAToken(): bool
     {
-        // Check if 2FA verification is cached for this session
-        $userId = get_current_user_id();
-        $lastVerification = get_user_meta($userId, 'wp_security_monitor_2fa_verified', true);
-
-        // 2FA valid for 15 minutes
-        if ($lastVerification && (time() - $lastVerification) < 900) {
-            return true;
-        }
-
-        // Need fresh 2FA verification
-        return false;
+        // 2FA has been removed. Always return true to avoid blocking operations
+        return true;
     }
 
     /**
@@ -588,19 +574,14 @@ class AccessControl
      */
     public static function generate2FAChallenge(): array
     {
+        // 2FA has been removed. Return a no-op challenge payload so callers
+        // that expect an array still receive a valid structure.
         $userId = get_current_user_id();
         $user = get_userdata($userId);
 
-        // Generate OTP
-        $secret = get_user_meta($userId, 'wp_security_monitor_2fa_secret', true);
-        if (!$secret) {
-            $secret = self::generateTOTPSecret();
-            update_user_meta($userId, 'wp_security_monitor_2fa_secret', $secret);
-        }
-
         return [
-            'method' => 'email', // For now, use email-based OTP
-            'destination' => $user->user_email,
+            'method' => 'none',
+            'destination' => $user->user_email ?? '',
             'challenge_id' => wp_generate_password(32, false)
         ];
     }
@@ -612,6 +593,7 @@ class AccessControl
      */
     private static function generateTOTPSecret(): string
     {
+        // 2FA removed: keep function available but generate a random token
         return wp_generate_password(32, true, true);
     }
 

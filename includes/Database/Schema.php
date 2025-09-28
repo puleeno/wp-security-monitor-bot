@@ -54,6 +54,7 @@ class Schema
         $issuesSQL = "CREATE TABLE IF NOT EXISTS $issuesTable (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             issue_hash varchar(32) NOT NULL,
+            line_code_hash varchar(32) DEFAULT NULL,
             issuer_name varchar(100) NOT NULL,
             issue_type varchar(50) NOT NULL,
             severity enum('low','medium','high','critical') DEFAULT 'medium',
@@ -89,6 +90,7 @@ class Schema
             KEY idx_last_detected (last_detected),
             KEY idx_is_ignored (is_ignored),
             KEY idx_file_path (file_path(255)),
+            KEY idx_line_code_hash (line_code_hash),
             KEY idx_ip_address (ip_address)
         ) $charset_collate;";
 
@@ -190,7 +192,10 @@ class Schema
         ) $charset_collate;";
 
         // Notifications queue table
-        $notificationsSQL = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}" . self::TABLE_NOTIFICATIONS . " (
+        $notificationsTable = $wpdb->prefix . self::TABLE_NOTIFICATIONS;
+        $issuesTable = $wpdb->prefix . self::TABLE_ISSUES;
+
+        $notificationsSQL = "CREATE TABLE IF NOT EXISTS " . $notificationsTable . " (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             channel_name varchar(100) NOT NULL,
             issue_id bigint(20) unsigned NOT NULL,
@@ -209,9 +214,8 @@ class Schema
             KEY idx_issue_id (issue_id),
             KEY idx_status (status),
             KEY idx_created_at (created_at),
-            KEY idx_pending (status, created_at),
-            FOREIGN KEY (issue_id) REFERENCES {$wpdb->prefix}" . self::TABLE_ISSUES . "(id) ON DELETE CASCADE
-        ) $charset_collate;";
+            KEY idx_pending (status, created_at)
+    ) " . $charset_collate . ";";
 
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
 
@@ -223,8 +227,61 @@ class Schema
         dbDelta($auditSQL);
         dbDelta($notificationsSQL);
 
+        // Ensure the foreign key exists for notifications.issue_id -> issues.id
+        // dbDelta can sometimes create ALTER statements that are invalid for FKs,
+        // so add the constraint explicitly if it's missing.
+        try {
+            $constraintExists = $wpdb->get_var($wpdb->prepare(
+                "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                 WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = %s AND REFERENCED_TABLE_NAME = %s",
+                DB_NAME,
+                /* TABLE_NAME */ $notificationsTable,
+                /* COLUMN_NAME */ 'issue_id',
+                /* REFERENCED_TABLE_NAME */ $issuesTable
+            ));
+
+            if (empty($constraintExists)) {
+                $constraintName = 'fk_security_monitor_notifications_issue_id';
+                $wpdb->query("ALTER TABLE `{$notificationsTable}` ADD CONSTRAINT `{$constraintName}` FOREIGN KEY (`issue_id`) REFERENCES `{$issuesTable}` (`id`) ON DELETE CASCADE");
+                if (WP_DEBUG) {
+                    error_log("WP Security Monitor: Added foreign key {$constraintName} on {$notificationsTable}(issue_id)");
+                }
+            }
+        } catch (\Exception $e) {
+            if (WP_DEBUG) {
+                error_log('WP Security Monitor: Failed to ensure notifications foreign key: ' . $e->getMessage());
+            }
+        }
+
         // Lưu phiên bản database
         update_option('wp_security_monitor_db_version', '1.1');
+    }
+
+    /**
+     * Migration: add line_code_hash column if missing
+     *
+     * @return void
+     */
+    public static function addLineCodeHashColumn(): void
+    {
+        global $wpdb;
+
+        $issuesTable = self::getTableName(self::TABLE_ISSUES);
+
+        $columnExists = $wpdb->get_var($wpdb->prepare(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = 'line_code_hash'",
+            DB_NAME,
+            $issuesTable
+        ));
+
+        if (empty($columnExists)) {
+            $wpdb->query("ALTER TABLE `{$issuesTable}` ADD COLUMN `line_code_hash` varchar(32) DEFAULT NULL AFTER `issue_hash`");
+            $wpdb->query("ALTER TABLE `{$issuesTable}` ADD INDEX `idx_line_code_hash` (`line_code_hash`)");
+            if (WP_DEBUG) {
+                error_log("WP Security Monitor: Added column line_code_hash to {$issuesTable}");
+            }
+        }
     }
 
     /**
@@ -272,6 +329,10 @@ class Schema
             // Migration từ version 1.0 lên 1.1: thêm column backtrace
             if (version_compare($currentVersion, '1.1', '<')) {
                 self::addBacktraceColumn();
+                // Ensure line_code_hash exists as part of 1.1 migration
+                if (method_exists(__CLASS__, 'addLineCodeHashColumn')) {
+                    self::addLineCodeHashColumn();
+                }
             }
 
             update_option('wp_security_monitor_db_version', $latestVersion);

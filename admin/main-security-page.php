@@ -6,7 +6,6 @@ if (!defined('ABSPATH')) {
 use Puleeno\SecurityBot\WebMonitor\Bot;
 use Puleeno\SecurityBot\WebMonitor\IssueManager;
 use Puleeno\SecurityBot\WebMonitor\Security\AccessControl;
-use Puleeno\SecurityBot\WebMonitor\Security\TwoFactorAuth;
 use Puleeno\SecurityBot\WebMonitor\Security\SecureConfigManager;
 use Puleeno\SecurityBot\WebMonitor\Security\CredentialManager;
 
@@ -30,7 +29,7 @@ try {
     $encryptionStatus = false;
 }
 
-$twoFactorStatus = TwoFactorAuth::isEnabled(get_current_user_id());
+$twoFactorStatus = false; // Two-Factor Authentication has been removed from this plugin
 $ipWhitelistActive = !empty(get_option('wp_security_monitor_ip_whitelist', []));
 
 // Get channels status - estimate based on actual channel availability
