@@ -51,7 +51,7 @@ class Schema
 
         // Table cho issues
         $issuesTable = $wpdb->prefix . self::TABLE_ISSUES;
-        $issuesSQL = "CREATE TABLE $issuesTable (
+        $issuesSQL = "CREATE TABLE IF NOT EXISTS $issuesTable (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             issue_hash varchar(32) NOT NULL,
             issuer_name varchar(100) NOT NULL,
@@ -94,7 +94,7 @@ class Schema
 
         // Table cho ignore rules
         $ignoreTable = $wpdb->prefix . self::TABLE_IGNORE_RULES;
-        $ignoreSQL = "CREATE TABLE $ignoreTable (
+        $ignoreSQL = "CREATE TABLE IF NOT EXISTS $ignoreTable (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             rule_name varchar(100) NOT NULL,
             rule_type enum('hash','pattern','issuer','file','ip','regex') NOT NULL,
@@ -120,7 +120,7 @@ class Schema
 
         // Table cho whitelist domains
         $whitelistTable = $wpdb->prefix . self::TABLE_WHITELIST_DOMAINS;
-        $whitelistSQL = "CREATE TABLE $whitelistTable (
+        $whitelistSQL = "CREATE TABLE IF NOT EXISTS $whitelistTable (
             domain varchar(255) NOT NULL,
             reason text DEFAULT NULL,
             added_by bigint(20) unsigned DEFAULT NULL,
@@ -135,7 +135,7 @@ class Schema
 
         // Table cho pending domains
         $pendingTable = $wpdb->prefix . self::TABLE_PENDING_DOMAINS;
-        $pendingSQL = "CREATE TABLE $pendingTable (
+        $pendingSQL = "CREATE TABLE IF NOT EXISTS $pendingTable (
             domain varchar(255) NOT NULL,
             first_detected datetime NOT NULL,
             detection_count int(11) DEFAULT 1,
@@ -154,7 +154,7 @@ class Schema
         ) $charset_collate;";
 
         // Table để lưu các domains đã bị reject
-        $rejectedSQL = "CREATE TABLE {$wpdb->prefix}" . self::TABLE_REJECTED_DOMAINS . " (
+        $rejectedSQL = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}" . self::TABLE_REJECTED_DOMAINS . " (
             id mediumint(9) NOT NULL AUTO_INCREMENT,
             domain varchar(255) NOT NULL,
             first_detected datetime DEFAULT CURRENT_TIMESTAMP,
@@ -174,7 +174,7 @@ class Schema
         ) $charset_collate;";
 
         // Audit log table
-        $auditSQL = "CREATE TABLE {$wpdb->prefix}" . self::TABLE_AUDIT_LOG . " (
+        $auditSQL = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}" . self::TABLE_AUDIT_LOG . " (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             event_type varchar(100) NOT NULL,
             user_id bigint(20) unsigned NOT NULL DEFAULT 0,
@@ -190,7 +190,7 @@ class Schema
         ) $charset_collate;";
 
         // Notifications queue table
-        $notificationsSQL = "CREATE TABLE {$wpdb->prefix}" . self::TABLE_NOTIFICATIONS . " (
+        $notificationsSQL = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}" . self::TABLE_NOTIFICATIONS . " (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             channel_name varchar(100) NOT NULL,
             issue_id bigint(20) unsigned NOT NULL,
