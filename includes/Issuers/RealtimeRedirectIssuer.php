@@ -91,9 +91,10 @@ class RealtimeRedirectIssuer implements IssuerInterface
                             'user_id' => $redirect['user_id'] ?? 0,
                             'timestamp' => $redirect['timestamp'],
                             'referer' => $redirect['referer'] ?? 'unknown',
-                            'method' => $redirect['method'] ?? 'unknown'
+                            'method' => $redirect['method'] ?? 'unknown',
+                            'backtrace' => $redirect['backtrace'] ?? 'unknown',
                         ],
-                        'timestamp' => $redirect['timestamp']
+                        'timestamp' => $redirect['timestamp'],
                     ];
                 }
             }
@@ -332,10 +333,9 @@ class RealtimeRedirectIssuer implements IssuerInterface
         ];
 
         // Thêm backtrace để debug
-        if (function_exists('debug_backtrace')) {
-            $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 5);
-            $redirect['backtrace'] = json_encode($backtrace, JSON_PRETTY_PRINT);
-        }
+        ob_start();
+        debug_print_backtrace();
+        $redirect['backtrace'] = ob_get_clean();
 
         // Trigger action immediately
         do_action('wp_security_monitor_suspicious_redirect', [
