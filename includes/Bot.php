@@ -2,6 +2,7 @@
 namespace Puleeno\SecurityBot\WebMonitor;
 
 use Puleeno\SecurityBot\WebMonitor\Abstracts\MonitorAbstract;
+use Puleeno\SecurityBot\WebMonitor\Channels\TelegramChannel;
 use Puleeno\SecurityBot\WebMonitor\Interfaces\ChannelInterface;
 use Puleeno\SecurityBot\WebMonitor\Interfaces\IssuerInterface;
 use Puleeno\SecurityBot\WebMonitor\Channels\EmailChannel;
@@ -273,12 +274,13 @@ class Bot extends MonitorAbstract
 
         if ($telegramToken && $telegramChatId && $telegramEnabled) {
             try {
-                $telegram = new \Puleeno\SecurityBot\WebMonitor\Channels\TelegramChannel();
+                $telegram = new TelegramChannel();
                 $telegram->configure([
                     'bot_token' => $telegramToken,
                     'chat_id' => $telegramChatId,
                     'enabled' => true
                 ]);
+                TelegramChannel::setInstance($telegram);
                 $this->addChannel($telegram);
 
                 if (WP_DEBUG) {

@@ -5,6 +5,16 @@ use Puleeno\SecurityBot\WebMonitor\Abstracts\Channel;
 
 class TelegramChannel extends Channel
 {
+    protected static $instance;
+
+    public static function setInstance(TelegramChannel $instance) {
+        static::$instance = $instance;
+    }
+
+    public static function getInstance() : ? TelegramChannel {
+        return static::$instance;
+    }
+
     public function getName(): string
     {
         return 'Telegram';
@@ -165,6 +175,14 @@ class TelegramChannel extends Channel
             $this->logError('Unexpected error: ' . $e->getMessage());
             return false;
         }
+    }
+
+    public static function sendHelper($message, $context = []) {
+        if (is_null(static::getInstance())) {
+            error_log('Web Monitor: Telegram bot is not ready');
+            return;
+        }
+        static::getInstance()->send($message, $context);
     }
 
     protected function checkConnection(): bool
