@@ -57,6 +57,9 @@ class IssueManager
             return false;
         }
 
+        // Tạo file .malware ngay lập tức khi phát hiện issue (không bị ignore)
+        $this->createMalwareFlagFile();
+
         // Kiểm tra issue đã tồn tại chưa (theo line_code_hash)
         $existingId = $wpdb->get_var($wpdb->prepare(
             "SELECT id FROM {$this->issuesTable} WHERE line_code_hash = %s",
@@ -729,5 +732,34 @@ class IssueManager
     {
         global $wpdb;
         return $wpdb->insert_id;
+    }
+
+    /**
+     * Tạo file .malware trong ABSPATH để đánh dấu có issue
+     *
+     * @return void
+     */
+    private function createMalwareFlagFile(): void
+    {
+        try {
+            if (!defined('ABSPATH')) {
+                return;
+            }
+
+            $flagFile = ABSPATH . '.malware';
+
+            // Tạo file rỗng nếu chưa tồn tại
+            if (!file_exists($flagFile)) {
+                $result = touch($flagFile);
+
+                if ($result && WP_DEBUG) {
+                    error_log('[WP Security Monitor] Created malware flag file: ' . $flagFile);
+                }
+            }
+        } catch (\Exception $e) {
+            if (WP_DEBUG) {
+                error_log('[WP Security Monitor] Error creating malware flag file: ' . $e->getMessage());
+            }
+        }
     }
 }
