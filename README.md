@@ -135,6 +135,35 @@ composer install
    - Tùy chỉnh email gửi và tên hiển thị
    - Click **Test Email** để kiểm tra
 
+### 🔍 Backtrace Debug Information
+
+Plugin tự động thu thập **backtrace** (call stack) cho các security issues để giúp debug và xác định nguồn gốc vấn đề.
+
+**Cách hoạt động:**
+
+1. **Realtime Issues** (Login Attempts, Redirects, User Registration):
+   - Backtrace được capture **ngay tại thời điểm event xảy ra** (khi user login failed, khi redirect được phát hiện, etc.)
+   - Backtrace này chính xác chỉ ra **nơi gọi** login/redirect/registration
+   - Ví dụ: Nếu có plugin nào đó gọi `wp_authenticate()`, backtrace sẽ chỉ ra file/line của plugin đó
+
+2. **Scheduled Issues** (File Changes, Suspicious Patterns):
+   - Backtrace sẽ là empty array `[]` vì đây là scheduled check
+   - Không có giá trị debug vì không liên quan đến event cụ thể
+
+3. **Xem Backtrace trong Admin**:
+   - Vào **Security Monitor > Issues**
+   - Click vào issue để xem chi tiết
+   - Section "🗂️ Backtrace" hiển thị call stack với:
+     - File path (relative từ WordPress root)
+     - Line number
+     - Function/Method name
+     - Class name (nếu có)
+
+**Lưu ý quan trọng:**
+- Backtrace được lưu **khi event xảy ra**, không phải khi detect issue
+- Internal frames (IssueManager, Bot) đã được filter ra để dễ đọc
+- Backtrace giúp xác định plugin/theme nào đang gây ra issue
+
 ### 🚩 Malware Flag File
 
 Plugin có thể tạo file `.malware` rỗng trong thư mục gốc WordPress (ABSPATH) để đánh dấu khi phát hiện vấn đề bảo mật. File này có thể được sử dụng bởi các hệ thống monitoring bên ngoài để phát hiện nhanh.

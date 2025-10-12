@@ -873,8 +873,7 @@ class Bot extends MonitorAbstract
 
         // Format message dựa vào type
         if ($type === 'failed_login_attempts') {
-            $message = "🚨 *CẢNH BÁO BẢO MẬT*\n";
-            $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+            $message = "🚨 *CẢNH BÁO BẢO MẬT*\n\n";
             $message .= "🔐 *Phát hiện nhiều lần đăng nhập thất bại*\n\n";
             $message .= "👤 Username: *{$username}*\n";
             $message .= "🌐 IP Address: *{$ipAddress}*\n";
@@ -887,8 +886,7 @@ class Bot extends MonitorAbstract
             $uniqueUsernames = $issueData['unique_usernames'] ?? 0;
             $totalAttempts = $issueData['total_attempts'] ?? 0;
 
-            $message = "🚨 *CẢNH BÁO KHẨN CẤP*\n";
-            $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+            $message = "🚨 *CẢNH BÁO KHẨN CẤP*\n\n";
             $message .= "⚠️ *Phát hiện tấn công Brute Force*\n\n";
             $message .= "🌐 IP Address: *{$ipAddress}*\n";
             $message .= "🔢 Tổng số lần thử: *{$totalAttempts}*\n";
@@ -896,8 +894,7 @@ class Bot extends MonitorAbstract
             $message .= "🚨 Mức độ: {$severityIcon} *" . strtoupper($severity) . "*\n\n";
             $message .= "📝 Chi tiết:\n_{$description}_\n";
         } elseif ($type === 'user_registration' || strpos($issuerName, 'UserRegistration') !== false) {
-            $message = "🔔 *THÔNG BÁO BẢO MẬT*\n";
-            $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+            $message = "🔔 *THÔNG BÁO BẢO MẬT*\n\n";
             $message .= "👥 *User mới được tạo*\n\n";
             $message .= "👤 Username: *{$username}*\n";
             if (!empty($email)) {
@@ -914,8 +911,7 @@ class Bot extends MonitorAbstract
             $message .= "📝 Chi tiết:\n_{$description}_\n";
         } else {
             // Default format
-            $message = "{$typeIcon} *CẢNH BÁO BẢO MẬT*\n";
-            $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+            $message = "{$typeIcon} *CẢNH BÁO BẢO MẬT*\n\n";
             $message .= "*{$title}*\n\n";
             $message .= "📝 _{$description}_\n\n";
             $message .= "⚠️ Mức độ: {$severityIcon} *" . strtoupper($severity) . "*\n";

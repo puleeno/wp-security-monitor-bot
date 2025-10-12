@@ -225,7 +225,7 @@ class LoginAttemptIssuer implements RealtimeIssuerInterface
                     'ip_address' => $record['ip'],
                     'username' => $record['username'],
                     'attempt_count' => count($recentAttempts),
-                    'backtrace' => $record['backtrace'] ?? $this->getBacktrace(),
+                    'backtrace' => $record['backtrace'] ?? [], // Chỉ dùng backtrace đã lưu, không tạo mới
                     'user_agent' => $record['user_agent'] ?? 'Unknown',
                     'referer' => $record['referer'] ?? 'Direct',
                     'debug_info' => DebugHelper::createIssueDebugInfo($this->getName(), $debugContext)
@@ -298,7 +298,7 @@ class LoginAttemptIssuer implements RealtimeIssuerInterface
                     'ip_address' => $ip,
                     'total_attempts' => $data['total_attempts'],
                     'unique_usernames' => count(array_unique($data['usernames'])),
-                    'backtrace' => $latestRecord['backtrace'] ?? $this->getBacktrace(),
+                    'backtrace' => $latestRecord['backtrace'] ?? [], // Chỉ dùng backtrace đã lưu, không tạo mới
                     'user_agent' => $latestRecord['user_agent'] ?? 'Unknown',
                     'referer' => $latestRecord['referer'] ?? 'Direct',
                     'debug_info' => DebugHelper::createIssueDebugInfo($this->getName(), $debugContext)
@@ -354,7 +354,7 @@ class LoginAttemptIssuer implements RealtimeIssuerInterface
                     'type' => 'suspicious_admin_login',
                     'ip_addresses' => $ips,
                     'ip_count' => count($ips),
-                    'backtrace' => $this->getBacktrace(),
+                    'backtrace' => [], // Scheduled check - không có backtrace từ login event
                     'user_agent' => $latestLogin['user_agent'] ?? 'Unknown',
                     'debug_info' => DebugHelper::createIssueDebugInfo($this->getName(), $debugContext)
                 ];
@@ -402,7 +402,7 @@ class LoginAttemptIssuer implements RealtimeIssuerInterface
                     'login_count' => count($recentNightLogins),
                     'ip_address' => $latestNightLogin['ip'] ?? 'Unknown',
                     'username' => $latestNightLogin['username'] ?? 'Unknown',
-                    'backtrace' => $this->getBacktrace(),
+                    'backtrace' => [], // Scheduled check - không có backtrace từ login event
                     'user_agent' => $latestNightLogin['user_agent'] ?? 'Unknown',
                     'debug_info' => DebugHelper::createIssueDebugInfo($this->getName(), $debugContext)
                 ];
@@ -572,6 +572,21 @@ class LoginAttemptIssuer implements RealtimeIssuerInterface
     /**
      * Lấy backtrace để debug
      *
+     * LƯU Ý QUAN TRỌNG:
+     * - Method này được gọi NGAY TẠI THỜI ĐIỂM EVENT XẢY RA (login failed, etc)
+     * - Backtrace được lưu vào record và SỬ DỤNG LẠI khi detect issues
+     * - KHÔNG BAO GIỜ gọi method này trong detect() methods vì sẽ tạo backtrace SAI
+     *   (backtrace của detect process thay vì login event)
+     *
+     * Backtrace được capture tại:
+     * - recordFailedLogin() - khi user login failed (ĐÚNG)
+     * - recordSuccessfulLogin() - khi admin login success (ĐÚNG)
+     *
+     * Backtrace KHÔNG được capture tại:
+     * - checkFailedLogins() - scheduled check (SAI)
+     * - checkBruteForceAttacks() - scheduled check (SAI)
+     * - checkSuspiciousLoginPatterns() - scheduled check (SAI)
+     *
      * @return array
      */
     private function getBacktrace(): array
@@ -580,11 +595,21 @@ class LoginAttemptIssuer implements RealtimeIssuerInterface
             return [];
         }
 
-        $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 10);
+        $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 15);
 
         // Lọc và format backtrace
         $filtered = [];
         foreach ($backtrace as $frame) {
+            // Bỏ qua các frames từ LoginAttemptIssuer
+            if (isset($frame['class']) && $frame['class'] === 'Puleeno\\SecurityBot\\WebMonitor\\Issuers\\LoginAttemptIssuer') {
+                continue;
+            }
+
+            // Bỏ qua các functions internal của issuer
+            if (isset($frame['function']) && in_array($frame['function'], ['recordFailedLogin', 'getBacktrace', 'checkRealtimeFailedLogin'])) {
+                continue;
+            }
+
             if (isset($frame['file']) && isset($frame['line'])) {
                 $filtered[] = [
                     'file' => $frame['file'],
