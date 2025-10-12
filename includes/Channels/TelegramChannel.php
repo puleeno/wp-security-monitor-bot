@@ -28,9 +28,10 @@ class TelegramChannel extends Channel
      */
     private function escapeMarkdown(string $text): string
     {
-        // Escape các ký tự đặc biệt trong Markdown
+        // Chỉ escape các ký tự đặc biệt trong Telegram Markdown
+        // Không escape dấu chấm, dấu chấm than, và các ký tự thường không gây lỗi
         $specialChars = [
-            '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'
+            '_', '*', '[', ']', '(', ')', '`'
         ];
 
         foreach ($specialChars as $char) {
@@ -80,12 +81,12 @@ class TelegramChannel extends Channel
                 error_log("[Telegram Debug] Chat ID: {$chatId}");
             }
 
-            // Escape message để tránh lỗi Markdown parsing
-            $escapedMessage = $this->escapeMarkdown($message);
+            // Không escape message vì message đã được format với markdown
+            // escapeMarkdown() chỉ dùng cho raw text, không dùng cho formatted message
+            $escapedMessage = $message;
 
             if (WP_DEBUG) {
-                error_log("[Telegram Debug] Original message: " . substr($message, 0, 100) . "...");
-                error_log("[Telegram Debug] Escaped message: " . substr($escapedMessage, 0, 100) . "...");
+                error_log("[Telegram Debug] Message: " . substr($message, 0, 200) . "...");
             }
 
             // Luôn sử dụng HTTPS vì Telegram API không hỗ trợ HTTP
@@ -264,8 +265,8 @@ class TelegramChannel extends Channel
                 error_log("[Telegram Debug] File size: {$fileSize} bytes");
             }
 
-            // Escape caption để tránh lỗi Markdown parsing
-            $escapedCaption = $this->escapeMarkdown($caption);
+            // Không escape caption vì có thể đã được format với markdown
+            $escapedCaption = $caption;
 
             // Chuẩn bị multipart form data
             $boundary = wp_generate_password(16, false);

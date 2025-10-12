@@ -840,11 +840,14 @@ class Bot extends MonitorAbstract
         $title = $issueData['title'] ?? 'Security Issue Detected';
         $description = $issueData['description'] ?? 'A security issue has been detected';
         $severity = $issueData['severity'] ?? 'medium';
+        $type = $issueData['type'] ?? 'unknown';
         $filePath = $issueData['file_path'] ?? '';
         $ipAddress = $issueData['ip_address'] ?? '';
         $username = $issueData['username'] ?? '';
         $email = $issueData['email'] ?? '';
         $roles = $issueData['roles'] ?? '';
+        $userAgent = $issueData['user_agent'] ?? '';
+        $attemptCount = $issueData['attempt_count'] ?? 0;
 
         // Emoji cho severity
         $severityEmoji = [
@@ -855,39 +858,95 @@ class Bot extends MonitorAbstract
         ];
         $severityIcon = $severityEmoji[$severity] ?? '🟡';
 
-        $message = "🔒 *SECURITY ALERT*\n";
-        $message .= str_repeat('─', 30) . "\n\n";
+        // Emoji cho type
+        $typeEmoji = [
+            'failed_login_attempts' => '🔐',
+            'brute_force_attack' => '⚠️',
+            'suspicious_admin_login' => '👤',
+            'off_hours_login' => '🌙',
+            'redirect' => '🔀',
+            'user_registration' => '👥',
+            'file_change' => '📁',
+            'malware' => '☠️'
+        ];
+        $typeIcon = $typeEmoji[$type] ?? '🔔';
 
-        $message .= "📋 *Issue Details*\n";
-        $message .= "• *Type:* {$issuerName}\n";
-        $message .= "• *Title:* {$title}\n";
-        $message .= "• *Description:* {$description}\n";
-        $message .= "• *Severity:* {$severityIcon} {$severity}\n";
+        // Format message dựa vào type
+        if ($type === 'failed_login_attempts') {
+            $message = "🚨 *CẢNH BÁO BẢO MẬT*\n";
+            $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+            $message .= "🔐 *Phát hiện nhiều lần đăng nhập thất bại*\n\n";
+            $message .= "👤 Username: *{$username}*\n";
+            $message .= "🌐 IP Address: *{$ipAddress}*\n";
+            if ($attemptCount > 0) {
+                $message .= "🔢 Số lần thử: *{$attemptCount}*\n";
+            }
+            $message .= "⚠️ Mức độ: {$severityIcon} *" . strtoupper($severity) . "*\n\n";
+            $message .= "📝 Chi tiết:\n_{$description}_\n";
+        } elseif ($type === 'brute_force_attack') {
+            $uniqueUsernames = $issueData['unique_usernames'] ?? 0;
+            $totalAttempts = $issueData['total_attempts'] ?? 0;
 
-        // Thông tin bổ sung nếu có
-        if (!empty($filePath)) {
-            $message .= "• *File:* `{$filePath}`\n";
+            $message = "🚨 *CẢNH BÁO KHẨN CẤP*\n";
+            $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+            $message .= "⚠️ *Phát hiện tấn công Brute Force*\n\n";
+            $message .= "🌐 IP Address: *{$ipAddress}*\n";
+            $message .= "🔢 Tổng số lần thử: *{$totalAttempts}*\n";
+            $message .= "👥 Số username khác nhau: *{$uniqueUsernames}*\n";
+            $message .= "🚨 Mức độ: {$severityIcon} *" . strtoupper($severity) . "*\n\n";
+            $message .= "📝 Chi tiết:\n_{$description}_\n";
+        } elseif ($type === 'user_registration' || strpos($issuerName, 'UserRegistration') !== false) {
+            $message = "🔔 *THÔNG BÁO BẢO MẬT*\n";
+            $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+            $message .= "👥 *User mới được tạo*\n\n";
+            $message .= "👤 Username: *{$username}*\n";
+            if (!empty($email)) {
+                $message .= "📧 Email: *{$email}*\n";
+            }
+            if (!empty($roles)) {
+                $rolesStr = is_array($roles) ? implode(', ', $roles) : $roles;
+                $message .= "🔑 Roles: *{$rolesStr}*\n";
+            }
+            if (!empty($ipAddress)) {
+                $message .= "🌐 IP Address: *{$ipAddress}*\n";
+            }
+            $message .= "⚠️ Mức độ: {$severityIcon} *" . strtoupper($severity) . "*\n\n";
+            $message .= "📝 Chi tiết:\n_{$description}_\n";
+        } else {
+            // Default format
+            $message = "{$typeIcon} *CẢNH BÁO BẢO MẬT*\n";
+            $message .= "━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+            $message .= "*{$title}*\n\n";
+            $message .= "📝 _{$description}_\n\n";
+            $message .= "⚠️ Mức độ: {$severityIcon} *" . strtoupper($severity) . "*\n";
+
+            // Thông tin bổ sung
+            if (!empty($filePath)) {
+                $message .= "📁 File: `{$filePath}`\n";
+            }
+            if (!empty($ipAddress)) {
+                $message .= "🌐 IP: *{$ipAddress}*\n";
+            }
+            if (!empty($username)) {
+                $message .= "👤 User: *{$username}*\n";
+            }
+            if (!empty($email)) {
+                $message .= "📧 Email: *{$email}*\n";
+            }
+            if (!empty($roles)) {
+                $rolesStr = is_array($roles) ? implode(', ', $roles) : $roles;
+                $message .= "🔑 Roles: *{$rolesStr}*\n";
+            }
         }
 
-        if (!empty($ipAddress)) {
-            $message .= "• *IP Address:* `{$ipAddress}`\n";
+        // User Agent (nếu có và ngắn)
+        if (!empty($userAgent) && strlen($userAgent) < 100) {
+            $message .= "\n🔍 User Agent:\n`{$userAgent}`\n";
         }
 
-        if (!empty($username)) {
-            $message .= "• *Username:* `{$username}`\n";
-        }
-
-        if (!empty($email)) {
-            $message .= "• *Email:* `{$email}`\n";
-        }
-
-        if (!empty($roles)) {
-            $rolesStr = is_string($roles) ? $roles : var_export($roles, true);
-            $message .= "• *Roles:* `{$rolesStr}`\n";
-        }
-
-        $message .= "\n⏰ *Detected:* " . current_time('d/m/Y H:i:s');
-        $message .= "\n🌐 *Site:* " . home_url();
+        // Footer
+        $message .= "\n⏰ " . current_time('d/m/Y H:i:s');
+        $message .= "\n🌐 " . home_url();
 
         return $message;
     }
