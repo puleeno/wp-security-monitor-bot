@@ -304,11 +304,82 @@ $unique_issuers = $wpdb->get_col("SELECT DISTINCT issuer_name FROM $table ORDER 
 
                                 <!-- Hidden details -->
                                 <div id="details-<?php echo $issue['id']; ?>" class="issue-details" style="display: none;">
-                                    <h4>Details:</h4>
+                                    <h4>📋 Description:</h4>
                                     <p><?php echo esc_html($issue['description']); ?></p>
+
                                     <?php if ($issue['details']): ?>
-                                        <h4>Technical Details:</h4>
+                                        <h4>🔍 Technical Details:</h4>
                                         <pre><?php echo esc_html($issue['details']); ?></pre>
+                                    <?php endif; ?>
+
+                                    <?php
+                                    // Debug: Kiểm tra backtrace
+                                    $hasBacktrace = !empty($issue['backtrace']) && $issue['backtrace'] !== 'null' && $issue['backtrace'] !== '[]';
+                                    if ($hasBacktrace):
+                                    ?>
+                                        <h4>🗂️ Backtrace:</h4>
+                                        <div class="backtrace-container">
+                                            <?php
+                                            $backtrace = is_string($issue['backtrace']) ? json_decode($issue['backtrace'], true) : $issue['backtrace'];
+                                            if (is_array($backtrace) && !empty($backtrace)):
+                                            ?>
+                                                <table class="backtrace-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>#</th>
+                                                            <th>File</th>
+                                                            <th>Line</th>
+                                                            <th>Function</th>
+                                                            <th>Class</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <?php foreach ($backtrace as $index => $frame): ?>
+                                                            <tr>
+                                                                <td><?php echo $index + 1; ?></td>
+                                                                <td>
+                                                                    <code class="file-path" title="<?php echo esc_attr($frame['file'] ?? 'Unknown'); ?>">
+                                                                        <?php
+                                                                        $file = $frame['file'] ?? 'Unknown';
+                                                                        // Hiển thị relative path từ ABSPATH
+                                                                        if (defined('ABSPATH') && strpos($file, ABSPATH) === 0) {
+                                                                            echo esc_html(str_replace(ABSPATH, '', $file));
+                                                                        } else {
+                                                                            echo esc_html(basename($file));
+                                                                        }
+                                                                        ?>
+                                                                    </code>
+                                                                </td>
+                                                                <td><code><?php echo esc_html($frame['line'] ?? '-'); ?></code></td>
+                                                                <td><code><?php echo esc_html($frame['function'] ?? 'unknown'); ?></code></td>
+                                                                <td><code><?php echo esc_html($frame['class'] ?? '-'); ?></code></td>
+                                                            </tr>
+                                                        <?php endforeach; ?>
+                                                    </tbody>
+                                                </table>
+                                            <?php else: ?>
+                                                <p><em>No backtrace available</em></p>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php else: ?>
+                                        <h4>🗂️ Backtrace:</h4>
+                                        <p><em>Debug: Backtrace data: <?php echo esc_html($issue['backtrace'] ?? 'NULL'); ?></em></p>
+                                        <?php if (!empty($issue['backtrace'])): ?>
+                                            <details>
+                                                <summary>Raw Backtrace JSON</summary>
+                                                <pre><?php echo esc_html($issue['backtrace']); ?></pre>
+                                            </details>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($issue['user_agent'])): ?>
+                                        <h4>🌐 User Agent:</h4>
+                                        <code><?php echo esc_html($issue['user_agent']); ?></code>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($issue['metadata'])): ?>
+                                        <h4>📊 Metadata:</h4>
+                                        <pre><?php echo esc_html(is_string($issue['metadata']) ? $issue['metadata'] : json_encode($issue['metadata'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
                                     <?php endif; ?>
                                 </div>
                             </td>
@@ -968,6 +1039,81 @@ $unique_issuers = $wpdb->get_col("SELECT DISTINCT issuer_name FROM $table ORDER 
 .status-pending { color: #f56e28; font-weight: bold; }
 .status-approved { color: #00a32a; font-weight: bold; }
 .status-rejected { color: #dc3232; font-weight: bold; }
+
+/* Backtrace styles */
+.backtrace-container {
+    max-height: 400px;
+    overflow-y: auto;
+    margin-top: 10px;
+}
+
+.backtrace-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    font-size: 12px;
+}
+
+.backtrace-table thead {
+    background: #f0f0f0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.backtrace-table th {
+    padding: 8px;
+    text-align: left;
+    border: 1px solid #ddd;
+    font-weight: bold;
+}
+
+.backtrace-table td {
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    vertical-align: top;
+}
+
+.backtrace-table tr:nth-child(even) {
+    background: #f9f9f9;
+}
+
+.backtrace-table tr:hover {
+    background: #e8f4f8;
+}
+
+.backtrace-table code {
+    background: transparent;
+    padding: 0;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+}
+
+.backtrace-table .file-path {
+    color: #0073aa;
+    display: block;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.backtrace-table .file-path:hover {
+    max-width: none;
+    white-space: normal;
+    word-break: break-all;
+}
+
+.issue-details h4 {
+    margin-top: 15px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 5px;
+}
+
+.issue-details > h4:first-child {
+    margin-top: 0;
+}
 </style>
 
 <script>

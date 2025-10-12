@@ -582,37 +582,46 @@ class IssueManager
     private function extractBacktrace(array $issueData): ?string
     {
         // Nếu có backtrace trong issue data
-        if (isset($issueData['backtrace'])) {
-            return is_string($issueData['backtrace']) ? $issueData['backtrace'] : json_encode($issueData['backtrace']);
+        if (isset($issueData['backtrace']) && !empty($issueData['backtrace'])) {
+            return is_string($issueData['backtrace']) ? $issueData['backtrace'] : json_encode($issueData['backtrace'], JSON_PRETTY_PRINT);
         }
 
-        // Nếu không có, tạo backtrace từ current stack
+        // Luôn tạo backtrace từ current stack
         if (function_exists('debug_backtrace')) {
-            $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 10);
+            $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 15);
 
-            // Lọc bỏ các frames không cần thiết
-            $filteredBacktrace = array_filter($backtrace, function($frame) {
+            // Lọc và format backtrace
+            $filteredBacktrace = [];
+            foreach ($backtrace as $frame) {
                 // Loại bỏ các frames từ IssueManager và các class internal
-                $excludeClasses = ['IssueManager', 'Bot', 'RealtimeRedirectIssuer'];
-                $excludeFunctions = ['recordIssue', 'handleSuspiciousRedirect'];
+                $excludeClasses = ['IssueManager', 'Bot', 'RealtimeRedirectIssuer', 'LoginAttemptIssuer'];
+                $excludeFunctions = ['recordIssue', 'handleSuspiciousRedirect', 'extractBacktrace'];
 
                 if (isset($frame['class']) && in_array($frame['class'], $excludeClasses)) {
-                    return false;
+                    continue;
                 }
 
                 if (isset($frame['function']) && in_array($frame['function'], $excludeFunctions)) {
-                    return false;
+                    continue;
                 }
 
-                return true;
-            });
-
-            if (!empty($filteredBacktrace)) {
-                return json_encode($filteredBacktrace, JSON_PRETTY_PRINT);
+                // Chỉ lấy frames có file và line
+                if (isset($frame['file']) && isset($frame['line'])) {
+                    $filteredBacktrace[] = [
+                        'file' => $frame['file'],
+                        'line' => $frame['line'],
+                        'function' => $frame['function'] ?? 'unknown',
+                        'class' => $frame['class'] ?? null
+                    ];
+                }
             }
+
+            // Luôn trả về backtrace, ngay cả khi rỗng
+            return json_encode($filteredBacktrace, JSON_PRETTY_PRINT);
         }
 
-        return null;
+        // Fallback: tạo backtrace rỗng thay vì null
+        return json_encode([], JSON_PRETTY_PRINT);
     }
 
     private function extractFilePath(array $issueData): ?string
