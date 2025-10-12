@@ -135,6 +135,29 @@ composer install
    - Tùy chỉnh email gửi và tên hiển thị
    - Click **Test Email** để kiểm tra
 
+### 🚩 Malware Flag File
+
+Plugin có thể tạo file `.malware` rỗng trong thư mục gốc WordPress (ABSPATH) để đánh dấu khi phát hiện vấn đề bảo mật. File này có thể được sử dụng bởi các hệ thống monitoring bên ngoài để phát hiện nhanh.
+
+**Bật tính năng này:**
+
+Thêm vào file `wp-config.php`:
+```php
+define('WP_SECURITY_MONITOR_MALWARE_FLAG', true);
+```
+
+**Cách hoạt động:**
+- Khi phát hiện **bất kỳ issue nào** (không bị ignore), file `.malware` sẽ được tạo ngay lập tức
+- File được tạo tại: `/path/to/wordpress/.malware`
+- File chỉ tạo một lần duy nhất
+- Có thể dùng cho monitoring scripts, cron jobs, hoặc hệ thống cảnh báo bên ngoài
+
+**Tắt tính năng:**
+```php
+define('WP_SECURITY_MONITOR_MALWARE_FLAG', false);
+```
+Hoặc xóa constant này khỏi `wp-config.php`
+
 ## 🎛️ Sử dụng
 
 ### Auto Monitoring

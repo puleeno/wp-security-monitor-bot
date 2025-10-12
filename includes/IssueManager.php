@@ -742,6 +742,11 @@ class IssueManager
     private function createMalwareFlagFile(): void
     {
         try {
+            // Chỉ tạo file nếu constant WP_SECURITY_MONITOR_MALWARE_FLAG được bật
+            if (!defined('WP_SECURITY_MONITOR_MALWARE_FLAG') || !WP_SECURITY_MONITOR_MALWARE_FLAG) {
+                return;
+            }
+
             if (!defined('ABSPATH')) {
                 return;
             }
