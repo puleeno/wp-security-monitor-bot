@@ -2,9 +2,10 @@
 namespace Puleeno\SecurityBot\WebMonitor\Issuers;
 
 use Puleeno\SecurityBot\WebMonitor\Interfaces\IssuerInterface;
+use Puleeno\SecurityBot\WebMonitor\Interfaces\RealtimeIssuerInterface;
 use Puleeno\SecurityBot\WebMonitor\DebugHelper;
 
-class LoginAttemptIssuer implements IssuerInterface
+class LoginAttemptIssuer implements RealtimeIssuerInterface
 {
     /**
      * @var array
@@ -104,13 +105,23 @@ class LoginAttemptIssuer implements IssuerInterface
                 'username' => $username,
                 'ip' => $ip,
                 'attempts' => [],
-                'total_attempts' => 0
+                'total_attempts' => 0,
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown',
+                'referer' => $_SERVER['HTTP_REFERER'] ?? 'Direct',
+                'request_uri' => $_SERVER['REQUEST_URI'] ?? 'Unknown',
+                'backtrace' => $this->getBacktrace()
             ];
         }
 
         $attempts[$key]['attempts'][] = $now;
         $attempts[$key]['total_attempts']++;
         $attempts[$key]['last_attempt'] = $now;
+
+        // Cập nhật thông tin mới nhất
+        $attempts[$key]['user_agent'] = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
+        $attempts[$key]['referer'] = $_SERVER['HTTP_REFERER'] ?? 'Direct';
+        $attempts[$key]['request_uri'] = $_SERVER['REQUEST_URI'] ?? 'Unknown';
+        $attempts[$key]['backtrace'] = $this->getBacktrace();
 
         // Cleanup old attempts (older than 24 hours)
         $attempts[$key]['attempts'] = array_filter(
@@ -126,6 +137,9 @@ class LoginAttemptIssuer implements IssuerInterface
         });
 
         update_option($this->optionKey, $attempts);
+
+        // Kiểm tra ngay xem có vượt threshold không để gửi notification realtime
+        $this->checkRealtimeFailedLogin($attempts[$key]);
     }
 
     /**
@@ -192,7 +206,10 @@ class LoginAttemptIssuer implements IssuerInterface
                     'attempt_count' => count($recentAttempts),
                     'time_window_minutes' => $timeWindow / 60,
                     'total_attempts' => $record['total_attempts'],
-                    'source' => 'failed_login_attempts'
+                    'source' => 'failed_login_attempts',
+                    'user_agent' => $record['user_agent'] ?? 'Unknown',
+                    'referer' => $record['referer'] ?? 'Direct',
+                    'request_uri' => $record['request_uri'] ?? 'Unknown'
                 ];
 
                 $issues[] = [
@@ -208,6 +225,9 @@ class LoginAttemptIssuer implements IssuerInterface
                     'ip_address' => $record['ip'],
                     'username' => $record['username'],
                     'attempt_count' => count($recentAttempts),
+                    'backtrace' => $record['backtrace'] ?? $this->getBacktrace(),
+                    'user_agent' => $record['user_agent'] ?? 'Unknown',
+                    'referer' => $record['referer'] ?? 'Direct',
                     'debug_info' => DebugHelper::createIssueDebugInfo($this->getName(), $debugContext)
                 ];
             }
@@ -246,13 +266,24 @@ class LoginAttemptIssuer implements IssuerInterface
 
         foreach ($ipAttempts as $ip => $data) {
             if ($data['total_attempts'] >= $threshold) {
+                // Lấy thông tin chi tiết từ record gần nhất
+                $latestRecord = null;
+                foreach ($attempts as $record) {
+                    if ($record['ip'] === $ip && (!$latestRecord || $record['last_attempt'] > $latestRecord['last_attempt'])) {
+                        $latestRecord = $record;
+                    }
+                }
+
                 $debugContext = [
                     'ip_address' => $ip,
                     'total_attempts' => $data['total_attempts'],
                     'unique_usernames' => count(array_unique($data['usernames'])),
                     'usernames_tried' => array_unique($data['usernames']),
                     'last_attempt' => date('Y-m-d H:i:s', $data['last_attempt']),
-                    'source' => 'brute_force_detection'
+                    'source' => 'brute_force_detection',
+                    'user_agent' => $latestRecord['user_agent'] ?? 'Unknown',
+                    'referer' => $latestRecord['referer'] ?? 'Direct',
+                    'request_uri' => $latestRecord['request_uri'] ?? 'Unknown'
                 ];
 
                 $issues[] = [
@@ -267,6 +298,9 @@ class LoginAttemptIssuer implements IssuerInterface
                     'ip_address' => $ip,
                     'total_attempts' => $data['total_attempts'],
                     'unique_usernames' => count(array_unique($data['usernames'])),
+                    'backtrace' => $latestRecord['backtrace'] ?? $this->getBacktrace(),
+                    'user_agent' => $latestRecord['user_agent'] ?? 'Unknown',
+                    'referer' => $latestRecord['referer'] ?? 'Direct',
                     'debug_info' => DebugHelper::createIssueDebugInfo($this->getName(), $debugContext)
                 ];
             }
@@ -298,12 +332,16 @@ class LoginAttemptIssuer implements IssuerInterface
             $ips = array_unique(array_column($recentLogins, 'ip'));
 
             if (count($ips) > 1) {
+                $latestLogin = end($recentLogins);
+
                 $debugContext = [
                     'unique_ips' => $ips,
                     'ip_count' => count($ips),
                     'time_window' => '1 hour',
                     'login_attempts' => count($recentLogins),
-                    'source' => 'multiple_ip_admin_login'
+                    'source' => 'multiple_ip_admin_login',
+                    'user_agent' => $latestLogin['user_agent'] ?? 'Unknown',
+                    'latest_ip' => $latestLogin['ip'] ?? 'Unknown'
                 ];
 
                 $issues[] = [
@@ -316,6 +354,8 @@ class LoginAttemptIssuer implements IssuerInterface
                     'type' => 'suspicious_admin_login',
                     'ip_addresses' => $ips,
                     'ip_count' => count($ips),
+                    'backtrace' => $this->getBacktrace(),
+                    'user_agent' => $latestLogin['user_agent'] ?? 'Unknown',
                     'debug_info' => DebugHelper::createIssueDebugInfo($this->getName(), $debugContext)
                 ];
             }
@@ -333,6 +373,8 @@ class LoginAttemptIssuer implements IssuerInterface
             });
 
             if (!empty($recentNightLogins)) {
+                $latestNightLogin = end($recentNightLogins);
+
                 $debugContext = [
                     'current_hour' => $currentHour,
                     'office_hours' => $officeHours,
@@ -341,7 +383,8 @@ class LoginAttemptIssuer implements IssuerInterface
                         return [
                             'user' => $login['username'],
                             'ip' => $login['ip'],
-                            'time' => date('H:i:s', $login['timestamp'])
+                            'time' => date('H:i:s', $login['timestamp']),
+                            'user_agent' => $login['user_agent'] ?? 'Unknown'
                         ];
                     }, $recentNightLogins),
                     'source' => 'off_hours_login'
@@ -357,6 +400,10 @@ class LoginAttemptIssuer implements IssuerInterface
                     'type' => 'off_hours_login',
                     'current_hour' => $currentHour,
                     'login_count' => count($recentNightLogins),
+                    'ip_address' => $latestNightLogin['ip'] ?? 'Unknown',
+                    'username' => $latestNightLogin['username'] ?? 'Unknown',
+                    'backtrace' => $this->getBacktrace(),
+                    'user_agent' => $latestNightLogin['user_agent'] ?? 'Unknown',
                     'debug_info' => DebugHelper::createIssueDebugInfo($this->getName(), $debugContext)
                 ];
             }
@@ -394,5 +441,160 @@ class LoginAttemptIssuer implements IssuerInterface
     private function getConfig(string $key, $default = null)
     {
         return $this->config[$key] ?? $default;
+    }
+
+    /**
+     * Kiểm tra realtime failed login và trigger notification
+     *
+     * @param array $record
+     * @return void
+     */
+    private function checkRealtimeFailedLogin(array $record): void
+    {
+        $threshold = $this->getConfig('failed_login_threshold', 5);
+        $timeWindow = $this->getConfig('failed_login_time_window', 900); // 15 minutes
+
+        $recentAttempts = array_filter(
+            $record['attempts'],
+            function($timestamp) use ($timeWindow) {
+                return $timestamp > (time() - $timeWindow);
+            }
+        );
+
+        // Nếu vượt threshold, trigger action để gửi notification ngay
+        if (count($recentAttempts) >= $threshold) {
+            $issueData = [
+                'title' => 'Phát hiện nhiều lần đăng nhập thất bại',
+                'description' => sprintf(
+                    'IP %s đã thử đăng nhập thất bại %d lần với username "%s" trong %d phút qua',
+                    $record['ip'],
+                    count($recentAttempts),
+                    $record['username'],
+                    $timeWindow / 60
+                ),
+                'message' => 'Phát hiện nhiều lần đăng nhập thất bại',
+                'details' => [
+                    'ip_address' => $record['ip'],
+                    'username' => $record['username'],
+                    'attempt_count' => count($recentAttempts),
+                    'time_window_minutes' => $timeWindow / 60,
+                    'total_attempts' => $record['total_attempts'],
+                    'user_agent' => $record['user_agent'] ?? 'Unknown',
+                    'referer' => $record['referer'] ?? 'Direct',
+                    'request_uri' => $record['request_uri'] ?? 'Unknown',
+                    'backtrace' => $record['backtrace'] ?? []
+                ],
+                'type' => 'failed_login_attempts',
+                'severity' => 'high',
+                'ip_address' => $record['ip'],
+                'username' => $record['username'],
+                'user_agent' => $record['user_agent'] ?? 'Unknown',
+                'referer' => $record['referer'] ?? 'Direct',
+                'backtrace' => $record['backtrace'] ?? []
+            ];
+
+            // Trigger action để Bot xử lý và gửi notification ngay
+            do_action('wp_security_monitor_realtime_failed_login', $issueData);
+
+            if (WP_DEBUG) {
+                error_log('[LoginAttemptIssuer] Realtime failed login detected: ' . $record['username'] . ' from ' . $record['ip']);
+            }
+        }
+
+        // Kiểm tra brute force realtime (quá nhiều username khác nhau từ cùng IP)
+        $this->checkRealtimeBruteForce($record['ip']);
+    }
+
+    /**
+     * Kiểm tra realtime brute force attack
+     *
+     * @param string $ip
+     * @return void
+     */
+    private function checkRealtimeBruteForce(string $ip): void
+    {
+        $threshold = $this->getConfig('brute_force_threshold', 20);
+        $attempts = get_option($this->optionKey, []);
+
+        // Đếm tổng số attempts từ IP này
+        $totalAttempts = 0;
+        $usernames = [];
+        $latestRecord = null;
+
+        foreach ($attempts as $record) {
+            if ($record['ip'] === $ip) {
+                $totalAttempts += $record['total_attempts'];
+                $usernames[] = $record['username'];
+                if (!$latestRecord || $record['last_attempt'] > $latestRecord['last_attempt']) {
+                    $latestRecord = $record;
+                }
+            }
+        }
+
+        // Nếu vượt threshold, trigger action
+        if ($totalAttempts >= $threshold) {
+            $issueData = [
+                'title' => 'Phát hiện cuộc tấn công brute force',
+                'description' => sprintf(
+                    'IP %s đã thực hiện %d lần đăng nhập thất bại với %d username khác nhau',
+                    $ip,
+                    $totalAttempts,
+                    count(array_unique($usernames))
+                ),
+                'message' => 'Phát hiện cuộc tấn công brute force',
+                'details' => [
+                    'ip_address' => $ip,
+                    'total_attempts' => $totalAttempts,
+                    'unique_usernames' => count(array_unique($usernames)),
+                    'usernames_tried' => array_unique($usernames),
+                    'user_agent' => $latestRecord['user_agent'] ?? 'Unknown',
+                    'referer' => $latestRecord['referer'] ?? 'Direct',
+                    'request_uri' => $latestRecord['request_uri'] ?? 'Unknown',
+                    'backtrace' => $latestRecord['backtrace'] ?? []
+                ],
+                'type' => 'brute_force_attack',
+                'severity' => 'critical',
+                'ip_address' => $ip,
+                'user_agent' => $latestRecord['user_agent'] ?? 'Unknown',
+                'referer' => $latestRecord['referer'] ?? 'Direct',
+                'backtrace' => $latestRecord['backtrace'] ?? []
+            ];
+
+            // Trigger action để Bot xử lý và gửi notification ngay
+            do_action('wp_security_monitor_realtime_brute_force', $issueData);
+
+            if (WP_DEBUG) {
+                error_log('[LoginAttemptIssuer] Realtime brute force detected from IP: ' . $ip);
+            }
+        }
+    }
+
+    /**
+     * Lấy backtrace để debug
+     *
+     * @return array
+     */
+    private function getBacktrace(): array
+    {
+        if (!function_exists('debug_backtrace')) {
+            return [];
+        }
+
+        $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 10);
+
+        // Lọc và format backtrace
+        $filtered = [];
+        foreach ($backtrace as $frame) {
+            if (isset($frame['file']) && isset($frame['line'])) {
+                $filtered[] = [
+                    'file' => $frame['file'],
+                    'line' => $frame['line'],
+                    'function' => $frame['function'] ?? 'unknown',
+                    'class' => $frame['class'] ?? null
+                ];
+            }
+        }
+
+        return $filtered;
     }
 }

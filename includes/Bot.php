@@ -137,6 +137,12 @@ class Bot extends MonitorAbstract
 
         // Hook cho user registration detection
         add_action('wp_security_monitor_user_registered', [$this, 'handleUserRegistration']);
+
+        // Hook cho realtime failed login detection
+        add_action('wp_security_monitor_realtime_failed_login', [$this, 'handleRealtimeFailedLogin']);
+
+        // Hook cho realtime brute force detection
+        add_action('wp_security_monitor_realtime_brute_force', [$this, 'handleRealtimeBruteForce']);
     }
 
     /**
@@ -1528,9 +1534,7 @@ class Bot extends MonitorAbstract
             // Log issue ngay lập tức
             $issueId = $this->issueManager->recordIssue(
                 'realtime_redirect',
-                $issueData,
-                'high',
-                $issue['message']
+                $issueData
             );
 
             // Chỉ gửi notification nếu đây là issue mới (không phải update)
@@ -1727,9 +1731,7 @@ class Bot extends MonitorAbstract
             // Log issue ngay lập tức
             $issueId = $this->issueManager->recordIssue(
                 'realtime_user_registration',
-                $issueData,
-                'medium',
-                "User mới được tạo: {$userData['username']} ({$userData['email']})"
+                $issueData
             );
 
             // Chỉ gửi notification nếu đây là issue mới (không phải update)
@@ -1794,6 +1796,174 @@ class Bot extends MonitorAbstract
 
         } catch (\Exception $e) {
             error_log('WP Security Monitor: Error handling user registration - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Xử lý realtime failed login detection
+     *
+     * @param array $issueData
+     * @return void
+     */
+    public function handleRealtimeFailedLogin(array $issueData): void
+    {
+        try {
+            if (WP_DEBUG) {
+                error_log("[Bot] Handling realtime failed login: " . json_encode($issueData));
+            }
+
+            // Log issue ngay lập tức
+            $issueId = $this->issueManager->recordIssue(
+                'realtime_failed_login',
+                $issueData
+            );
+
+            // Chỉ gửi notification nếu đây là issue mới (không phải update)
+            if ($issueId && $this->isNewIssue($issueId)) {
+                // Tạo notification records cho tất cả channels active
+                $this->ensureChannelsInitialized();
+                $notificationManager = \Puleeno\SecurityBot\WebMonitor\NotificationManager::getInstance();
+
+                foreach ($this->channels as $channelName => $channel) {
+                    if ($channel->isAvailable()) {
+                        $message = $this->formatNotificationMessage('LoginAttemptIssuer', $issueData);
+                        $context = [
+                            'issuer' => 'LoginAttemptIssuer',
+                            'issue_data' => $issueData,
+                            'timestamp' => current_time('mysql'),
+                            'is_realtime' => true
+                        ];
+
+                        // Tạo notification record
+                        $notificationManager->queueNotification(
+                            $channelName,
+                            $issueId,
+                            $message,
+                            $context
+                        );
+
+                        // Gửi notification trực tiếp
+                        try {
+                            $result = $channel->send($message, $context);
+
+                            if ($result) {
+                                // Cập nhật status thành 'sent'
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'sent'
+                                );
+                                error_log("WP Security Monitor: Realtime failed login notification sent successfully via {$channelName}");
+                            } else {
+                                // Cập nhật status thành 'failed'
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'failed',
+                                    'Failed to send notification'
+                                );
+                                error_log("WP Security Monitor: Failed to send realtime failed login notification via {$channelName}");
+                            }
+                        } catch (\Exception $e) {
+                            // Cập nhật status thành 'failed'
+                            $notificationManager->updateNotificationStatus(
+                                $notificationManager->getLastInsertedNotificationId(),
+                                'failed',
+                                'Exception: ' . $e->getMessage()
+                            );
+                            error_log("WP Security Monitor: Error sending realtime failed login notification via {$channelName}: " . $e->getMessage());
+                        }
+                    }
+                }
+            } else if ($issueId) {
+                // Issue đã tồn tại, chỉ log update
+                error_log("WP Security Monitor: Updated existing failed login issue ID: {$issueId}");
+            }
+
+        } catch (\Exception $e) {
+            error_log('WP Security Monitor: Error handling realtime failed login - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Xử lý realtime brute force detection
+     *
+     * @param array $issueData
+     * @return void
+     */
+    public function handleRealtimeBruteForce(array $issueData): void
+    {
+        try {
+            if (WP_DEBUG) {
+                error_log("[Bot] Handling realtime brute force: " . json_encode($issueData));
+            }
+
+            // Log issue ngay lập tức
+            $issueId = $this->issueManager->recordIssue(
+                'realtime_brute_force',
+                $issueData
+            );
+
+            // Chỉ gửi notification nếu đây là issue mới (không phải update)
+            if ($issueId && $this->isNewIssue($issueId)) {
+                // Tạo notification records cho tất cả channels active
+                $this->ensureChannelsInitialized();
+                $notificationManager = \Puleeno\SecurityBot\WebMonitor\NotificationManager::getInstance();
+
+                foreach ($this->channels as $channelName => $channel) {
+                    if ($channel->isAvailable()) {
+                        $message = $this->formatNotificationMessage('LoginAttemptIssuer', $issueData);
+                        $context = [
+                            'issuer' => 'LoginAttemptIssuer',
+                            'issue_data' => $issueData,
+                            'timestamp' => current_time('mysql'),
+                            'is_realtime' => true
+                        ];
+
+                        // Tạo notification record
+                        $notificationManager->queueNotification(
+                            $channelName,
+                            $issueId,
+                            $message,
+                            $context
+                        );
+
+                        // Gửi notification trực tiếp
+                        try {
+                            $result = $channel->send($message, $context);
+
+                            if ($result) {
+                                // Cập nhật status thành 'sent'
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'sent'
+                                );
+                                error_log("WP Security Monitor: Realtime brute force notification sent successfully via {$channelName}");
+                            } else {
+                                // Cập nhật status thành 'failed'
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'failed',
+                                    'Failed to send notification'
+                                );
+                                error_log("WP Security Monitor: Failed to send realtime brute force notification via {$channelName}");
+                            }
+                        } catch (\Exception $e) {
+                            // Cập nhật status thành 'failed'
+                            $notificationManager->updateNotificationStatus(
+                                $notificationManager->getLastInsertedNotificationId(),
+                                'failed',
+                                'Exception: ' . $e->getMessage()
+                            );
+                            error_log("WP Security Monitor: Error sending realtime brute force notification via {$channelName}: " . $e->getMessage());
+                        }
+                    }
+                }
+            } else if ($issueId) {
+                // Issue đã tồn tại, chỉ log update
+                error_log("WP Security Monitor: Updated existing brute force issue ID: {$issueId}");
+            }
+
+        } catch (\Exception $e) {
+            error_log('WP Security Monitor: Error handling realtime brute force - ' . $e->getMessage());
         }
     }
 }

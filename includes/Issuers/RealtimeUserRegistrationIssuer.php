@@ -3,6 +3,7 @@
 namespace Puleeno\SecurityBot\WebMonitor\Issuers;
 
 use Puleeno\SecurityBot\WebMonitor\Interfaces\IssuerInterface;
+use Puleeno\SecurityBot\WebMonitor\Interfaces\RealtimeIssuerInterface;
 use Puleeno\SecurityBot\WebMonitor\DebugHelper;
 use Puleeno\SecurityBot\WebMonitor\ForensicHelper;
 use Puleeno\SecurityBot\WebMonitor\Enums\IssuerType;
@@ -14,7 +15,7 @@ use Puleeno\SecurityBot\WebMonitor\Enums\IssuerType;
  *
  * @package Puleeno\SecurityBot\WebMonitor\Issuers
  */
-class RealtimeUserRegistrationIssuer implements IssuerInterface
+class RealtimeUserRegistrationIssuer implements RealtimeIssuerInterface
 {
     private array $config = [];
 

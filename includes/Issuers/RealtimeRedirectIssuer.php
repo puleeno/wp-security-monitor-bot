@@ -2,12 +2,13 @@
 namespace Puleeno\SecurityBot\WebMonitor\Issuers;
 
 use Puleeno\SecurityBot\WebMonitor\Interfaces\IssuerInterface;
+use Puleeno\SecurityBot\WebMonitor\Interfaces\RealtimeIssuerInterface;
 use Puleeno\SecurityBot\WebMonitor\WhitelistManager;
 use Puleeno\SecurityBot\WebMonitor\DebugHelper;
 use Puleeno\SecurityBot\WebMonitor\ForensicHelper;
 use Puleeno\SecurityBot\WebMonitor\Enums\IssuerType;
 
-class RealtimeRedirectIssuer implements IssuerInterface
+class RealtimeRedirectIssuer implements RealtimeIssuerInterface
 {
     /**
      * @var array
