@@ -285,6 +285,37 @@ class Schema
     }
 
     /**
+     * Migration: add viewed columns
+     *
+     * @return void
+     */
+    public static function addViewedColumns(): void
+    {
+        global $wpdb;
+
+        $issuesTable = self::getTableName(self::TABLE_ISSUES);
+
+        // Check if viewed column exists
+        $viewedExists = $wpdb->get_var($wpdb->prepare(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = 'viewed'",
+            DB_NAME,
+            $issuesTable
+        ));
+
+        if (empty($viewedExists)) {
+            $wpdb->query("ALTER TABLE `{$issuesTable}` ADD COLUMN `viewed` tinyint(1) DEFAULT 0 AFTER `is_ignored`");
+            $wpdb->query("ALTER TABLE `{$issuesTable}` ADD COLUMN `viewed_by` bigint(20) unsigned DEFAULT NULL AFTER `viewed`");
+            $wpdb->query("ALTER TABLE `{$issuesTable}` ADD COLUMN `viewed_at` datetime DEFAULT NULL AFTER `viewed_by`");
+            $wpdb->query("ALTER TABLE `{$issuesTable}` ADD INDEX `idx_viewed` (`viewed`)");
+
+            if (WP_DEBUG) {
+                error_log("WP Security Monitor: Added viewed columns to {$issuesTable}");
+            }
+        }
+    }
+
+    /**
      * Xóa tables khi plugin được uninstall
      *
      * @return void
@@ -319,7 +350,7 @@ class Schema
     public static function updateSchema(): void
     {
         $currentVersion = get_option('wp_security_monitor_db_version', '0');
-        $latestVersion = '1.1';
+        $latestVersion = '1.2';
 
         if (version_compare($currentVersion, $latestVersion, '<')) {
             if (version_compare($currentVersion, '1.0', '<')) {
@@ -333,6 +364,11 @@ class Schema
                 if (method_exists(__CLASS__, 'addLineCodeHashColumn')) {
                     self::addLineCodeHashColumn();
                 }
+            }
+
+            // Migration từ version 1.1 lên 1.2: thêm viewed columns
+            if (version_compare($currentVersion, '1.2', '<')) {
+                self::addViewedColumns();
             }
 
             update_option('wp_security_monitor_db_version', $latestVersion);

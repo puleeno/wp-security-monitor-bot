@@ -40,9 +40,10 @@ class IssueManager
      *
      * @param string $issuerName
      * @param array $issueData
-     * @return int|false Issue ID hoặc false nếu lỗi
+     * @param object|null $issuer Issuer instance để check behavior (optional)
+     * @return int|false Issue ID hoặc false nếu lỗi, hoặc negative ID nếu cần notify lại
      */
-    public function recordIssue(string $issuerName, array $issueData)
+    public function recordIssue(string $issuerName, array $issueData, $issuer = null)
     {
         global $wpdb;
 
@@ -61,28 +62,63 @@ class IssueManager
         $this->createMalwareFlagFile();
 
         // Kiểm tra issue đã tồn tại chưa (theo line_code_hash)
-        $existingId = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM {$this->issuesTable} WHERE line_code_hash = %s",
+        $existingIssue = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, viewed FROM {$this->issuesTable} WHERE line_code_hash = %s",
             $lineCodeHash
         ));
 
         $now = current_time('mysql');
 
-        if ($existingId) {
+        if ($existingIssue) {
+            $existingId = $existingIssue->id;
+            $wasViewed = $existingIssue->viewed == 1;
+
             // Cập nhật existing issue
             // Sử dụng raw SQL để tăng detection_count
             $wpdb->query($wpdb->prepare(
                 "UPDATE {$this->issuesTable}
                  SET last_detected = %s,
                      detection_count = detection_count + 1,
-                     updated_at = %s
+                     updated_at = %s,
+                     viewed = 0,
+                     viewed_by = NULL,
+                     viewed_at = NULL
                  WHERE id = %d",
                 $now, $now, $existingId
             ));
 
             $updated = $wpdb->rows_affected > 0;
 
-            return $updated ? $existingId : false;
+            // LOGIC BÁO CÁO LẠI:
+            // - Nếu issuer có method shouldNotifyOnRedetection() → dùng nó
+            // - Fallback:
+            //   + Nếu đã viewed → Báo lại
+            //   + Nếu issuer_name bắt đầu với "realtime_" → Báo lại (backward compatibility)
+
+            if ($updated) {
+                $shouldNotify = false;
+
+                // Check issuer behavior nếu có
+                if ($issuer && method_exists($issuer, 'shouldNotifyOnRedetection')) {
+                    $shouldNotify = $issuer->shouldNotifyOnRedetection();
+                } elseif ($wasViewed) {
+                    // Fallback 1: Nếu đã viewed thì báo lại
+                    $shouldNotify = true;
+                } elseif (strpos($issuerName, 'realtime_') === 0) {
+                    // Fallback 2: Nếu issuer name bắt đầu với "realtime_" → Báo lại
+                    $shouldNotify = true;
+                }
+
+                if ($shouldNotify) {
+                    // Gửi notification (return negative ID)
+                    return -$existingId;
+                } else {
+                    // Không gửi notification (return positive ID)
+                    return $existingId;
+                }
+            }
+
+            return false;
         } else {
             // Tạo issue mới
             $data = [
@@ -741,6 +777,59 @@ class IssueManager
     {
         global $wpdb;
         return $wpdb->insert_id;
+    }
+
+    /**
+     * Đánh dấu issue đã xem
+     *
+     * @param int $issueId
+     * @return bool
+     */
+    public function markAsViewed(int $issueId): bool
+    {
+        global $wpdb;
+
+        $currentUser = wp_get_current_user();
+        $userId = $currentUser->ID;
+
+        $result = $wpdb->update(
+            $this->issuesTable,
+            [
+                'viewed' => 1,
+                'viewed_by' => $userId,
+                'viewed_at' => current_time('mysql')
+            ],
+            ['id' => $issueId],
+            ['%d', '%d', '%s'],
+            ['%d']
+        );
+
+        return $result !== false;
+    }
+
+    /**
+     * Bỏ đánh dấu đã xem (để issue xuất hiện lại nếu detect lại)
+     *
+     * @param int $issueId
+     * @return bool
+     */
+    public function unmarkAsViewed(int $issueId): bool
+    {
+        global $wpdb;
+
+        $result = $wpdb->update(
+            $this->issuesTable,
+            [
+                'viewed' => 0,
+                'viewed_by' => null,
+                'viewed_at' => null
+            ],
+            ['id' => $issueId],
+            ['%d', '%d', '%s'],
+            ['%d']
+        );
+
+        return $result !== false;
     }
 
     /**

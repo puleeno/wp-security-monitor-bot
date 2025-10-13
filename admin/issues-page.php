@@ -432,6 +432,20 @@ $unique_issuers = $wpdb->get_col("SELECT DISTINCT issuer_name FROM $table ORDER 
                             <td>
                                 <div class="button-group">
                                     <?php if (!$issue['is_ignored']): ?>
+                                        <?php
+                                        $isViewed = isset($issue['viewed']) && $issue['viewed'] == 1;
+                                        ?>
+
+                                        <?php if (!$isViewed): ?>
+                                            <button class="button-small button button-primary" onclick="markAsViewed(<?php echo $issue['id']; ?>)" id="viewed-btn-<?php echo $issue['id']; ?>">
+                                                👁️ Đánh dấu đã xem
+                                            </button>
+                                        <?php else: ?>
+                                            <button class="button-small button" onclick="unmarkAsViewed(<?php echo $issue['id']; ?>)" id="viewed-btn-<?php echo $issue['id']; ?>" style="opacity: 0.6;">
+                                                ✅ Đã xem
+                                            </button>
+                                        <?php endif; ?>
+
                                         <button class="button-small button" onclick="showIgnoreModal(<?php echo $issue['id']; ?>)">
                                             🚫 Ignore
                                         </button>
@@ -1138,6 +1152,98 @@ function showResolveModal(issueId) {
 
 function closeModal(modalId) {
     document.getElementById(modalId).style.display = 'none';
+}
+
+function markAsViewed(issueId) {
+    if (!confirm('Đánh dấu issue này là đã xem? Nếu issue xuất hiện lại sẽ được báo cáo tiếp.')) {
+        return;
+    }
+
+    const btn = document.getElementById('viewed-btn-' + issueId);
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Đang xử lý...';
+
+    jQuery.ajax({
+        url: ajaxurl,
+        type: 'POST',
+        data: {
+            action: 'security_monitor_mark_viewed',
+            issue_id: issueId,
+            nonce: '<?php echo wp_create_nonce('security_monitor_nonce'); ?>'
+        },
+        success: function(response) {
+            if (response.success) {
+                btn.innerHTML = '✅ Đã xem';
+                btn.className = 'button-small button';
+                btn.style.opacity = '0.6';
+                btn.onclick = function() { unmarkAsViewed(issueId); };
+                btn.disabled = false;
+
+                // Show success message
+                const notice = document.createElement('div');
+                notice.className = 'notice notice-success is-dismissible';
+                notice.innerHTML = '<p>' + response.data.message + '</p>';
+                document.querySelector('.wrap').insertBefore(notice, document.querySelector('.wrap').firstChild);
+                setTimeout(() => notice.remove(), 3000);
+            } else {
+                alert('Lỗi: ' + response.data.message);
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        },
+        error: function() {
+            alert('Có lỗi xảy ra. Vui lòng thử lại.');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    });
+}
+
+function unmarkAsViewed(issueId) {
+    if (!confirm('Bỏ đánh dấu đã xem? Issue này sẽ được báo cáo lại nếu phát hiện tiếp.')) {
+        return;
+    }
+
+    const btn = document.getElementById('viewed-btn-' + issueId);
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Đang xử lý...';
+
+    jQuery.ajax({
+        url: ajaxurl,
+        type: 'POST',
+        data: {
+            action: 'security_monitor_unmark_viewed',
+            issue_id: issueId,
+            nonce: '<?php echo wp_create_nonce('security_monitor_nonce'); ?>'
+        },
+        success: function(response) {
+            if (response.success) {
+                btn.innerHTML = '👁️ Đánh dấu đã xem';
+                btn.className = 'button-small button button-primary';
+                btn.style.opacity = '1';
+                btn.onclick = function() { markAsViewed(issueId); };
+                btn.disabled = false;
+
+                // Show success message
+                const notice = document.createElement('div');
+                notice.className = 'notice notice-success is-dismissible';
+                notice.innerHTML = '<p>' + response.data.message + '</p>';
+                document.querySelector('.wrap').insertBefore(notice, document.querySelector('.wrap').firstChild);
+                setTimeout(() => notice.remove(), 3000);
+            } else {
+                alert('Lỗi: ' + response.data.message);
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        },
+        error: function() {
+            alert('Có lỗi xảy ra. Vui lòng thử lại.');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    });
 }
 
 function showApproveModal(domain) {

@@ -125,6 +125,8 @@ class Bot extends MonitorAbstract
         add_action('wp_ajax_security_monitor_test_channel', [$this, 'ajaxTestChannel']);
         add_action('wp_ajax_security_monitor_test_send_message', [$this, 'ajaxTestSendMessage']);
         add_action('wp_ajax_security_monitor_run_check', [$this, 'ajaxRunCheck']);
+        add_action('wp_ajax_security_monitor_mark_viewed', [$this, 'ajaxMarkViewed']);
+        add_action('wp_ajax_security_monitor_unmark_viewed', [$this, 'ajaxUnmarkViewed']);
 
         // Hook cho manual check từ admin
         add_action('admin_init', [$this, 'handleAdminActions']);
@@ -701,7 +703,7 @@ class Bot extends MonitorAbstract
 
                     // Lưu từng issue vào database
                     foreach ($detectedIssues as $issueData) {
-                        $issueId = $issueManager->recordIssue($issuer->getName(), $issueData);
+                        $issueId = $issueManager->recordIssue($issuer->getName(), $issueData, $issuer);
 
                                                 // Chỉ gửi notification cho issues mới (không bị ignore)
                         if ($issueId !== false) {
@@ -1587,6 +1589,7 @@ class Bot extends MonitorAbstract
             $this->handleRedirectDomainWhitelist($issueData);
 
             // Log issue ngay lập tức
+            // Realtime redirect sẽ LUÔN notify vì không pass issuer instance
             $issueId = $this->issueManager->recordIssue(
                 'realtime_redirect',
                 $issueData
@@ -1784,6 +1787,7 @@ class Bot extends MonitorAbstract
             ];
 
             // Log issue ngay lập tức
+            // Realtime user registration sẽ LUÔN notify vì không pass issuer instance
             $issueId = $this->issueManager->recordIssue(
                 'realtime_user_registration',
                 $issueData
@@ -2019,6 +2023,68 @@ class Bot extends MonitorAbstract
 
         } catch (\Exception $e) {
             error_log('WP Security Monitor: Error handling realtime brute force - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * AJAX handler: Đánh dấu issue đã xem
+     *
+     * @return void
+     */
+    public function ajaxMarkViewed(): void
+    {
+        check_ajax_referer('security_monitor_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+            return;
+        }
+
+        $issueId = isset($_POST['issue_id']) ? intval($_POST['issue_id']) : 0;
+
+        if (!$issueId) {
+            wp_send_json_error(['message' => 'Invalid issue ID']);
+            return;
+        }
+
+        $issueManager = IssueManager::getInstance();
+        $success = $issueManager->markAsViewed($issueId);
+
+        if ($success) {
+            wp_send_json_success(['message' => 'Issue đã được đánh dấu là đã xem']);
+        } else {
+            wp_send_json_error(['message' => 'Không thể đánh dấu issue']);
+        }
+    }
+
+    /**
+     * AJAX handler: Bỏ đánh dấu đã xem
+     *
+     * @return void
+     */
+    public function ajaxUnmarkViewed(): void
+    {
+        check_ajax_referer('security_monitor_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+            return;
+        }
+
+        $issueId = isset($_POST['issue_id']) ? intval($_POST['issue_id']) : 0;
+
+        if (!$issueId) {
+            wp_send_json_error(['message' => 'Invalid issue ID']);
+            return;
+        }
+
+        $issueManager = IssueManager::getInstance();
+        $success = $issueManager->unmarkAsViewed($issueId);
+
+        if ($success) {
+            wp_send_json_success(['message' => 'Đã bỏ đánh dấu đã xem']);
+        } else {
+            wp_send_json_error(['message' => 'Không thể bỏ đánh dấu']);
         }
     }
 }
