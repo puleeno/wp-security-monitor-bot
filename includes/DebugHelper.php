@@ -50,9 +50,10 @@ class DebugHelper
      *
      * @param string $issuerName
      * @param array $additionalContext
+     * @param bool $includeBacktrace Có tự động tạo backtrace không (default: false)
      * @return array
      */
-    public static function createIssueDebugInfo(string $issuerName, array $additionalContext = []): array
+    public static function createIssueDebugInfo(string $issuerName, array $additionalContext = [], bool $includeBacktrace = false): array
     {
         $debug = [
             'issuer' => $issuerName,
@@ -64,9 +65,13 @@ class DebugHelper
             'ip_address' => self::getRealIPAddress(),
             'wordpress_version' => get_bloginfo('version'),
             'php_version' => PHP_VERSION,
-            'backtrace' => self::getDebugTrace(2, 8), // Skip 2 frames: this function và caller
             'context' => $additionalContext
         ];
+
+        // Chỉ tạo backtrace nếu được yêu cầu (để tránh backtrace của scheduled checks)
+        if ($includeBacktrace) {
+            $debug['backtrace'] = self::getDebugTrace(2, 8); // Skip 2 frames: this function và caller
+        }
 
         // WordPress specific info
         if (function_exists('wp_get_current_user')) {
