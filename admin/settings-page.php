@@ -239,6 +239,27 @@ if (isset($_POST['security_monitor_action']) && wp_verify_nonce($_POST['_wpnonce
                 <td><?php echo $stats['issuers_count']; ?> monitor đang hoạt động</td>
             </tr>
             <tr>
+                <th>Database version:</th>
+                <td>
+                    <?php
+                    $dbVersion = get_option('wp_security_monitor_db_version', '0');
+                    $latestVersion = '1.2';
+                    $needsMigration = version_compare($dbVersion, $latestVersion, '<');
+                    ?>
+                    <code><?php echo esc_html($dbVersion); ?></code>
+                    <?php if ($needsMigration): ?>
+                        <span style="color: orange;">⚠️ Cần cập nhật lên <?php echo $latestVersion; ?></span>
+                        <form method="post" style="display: inline-block; margin-left: 10px;">
+                            <?php wp_nonce_field('security_monitor_migrate_db'); ?>
+                            <input type="hidden" name="action" value="migrate_database">
+                            <button type="submit" class="button button-small">🔄 Migrate Now</button>
+                        </form>
+                    <?php else: ?>
+                        <span style="color: green;">✅ Latest</span>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            <tr>
                 <th>Lần check cuối:</th>
                 <td>
                     <?php

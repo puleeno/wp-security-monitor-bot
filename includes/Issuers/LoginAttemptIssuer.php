@@ -192,6 +192,10 @@ class LoginAttemptIssuer implements RealtimeIssuerInterface
         $timeWindow = $this->getConfig('failed_login_time_window', 900); // 15 minutes
 
         foreach ($attempts as $record) {
+            // Bỏ qua records đã được report
+            if (isset($record['reported']) && $record['reported'] === true) {
+                continue;
+            }
             $recentAttempts = array_filter(
                 $record['attempts'],
                 function($timestamp) use ($timeWindow) {
@@ -230,6 +234,9 @@ class LoginAttemptIssuer implements RealtimeIssuerInterface
                     'referer' => $record['referer'] ?? 'Direct',
                     'debug_info' => DebugHelper::createIssueDebugInfo($this->getName(), $debugContext)
                 ];
+
+                // Đánh dấu record này đã được report
+                $this->markRecordAsReported($record['ip'], $record['username']);
             }
         }
 
@@ -250,6 +257,10 @@ class LoginAttemptIssuer implements RealtimeIssuerInterface
         // Group by IP
         $ipAttempts = [];
         foreach ($attempts as $record) {
+            // Bỏ qua records đã được report
+            if (isset($record['reported']) && $record['reported'] === true) {
+                continue;
+            }
             $ip = $record['ip'];
             if (!isset($ipAttempts[$ip])) {
                 $ipAttempts[$ip] = [
@@ -303,6 +314,9 @@ class LoginAttemptIssuer implements RealtimeIssuerInterface
                     'referer' => $latestRecord['referer'] ?? 'Direct',
                     'debug_info' => DebugHelper::createIssueDebugInfo($this->getName(), $debugContext)
                 ];
+
+                // Đánh dấu tất cả records của IP này đã được report
+                $this->markIpRecordsAsReported($ip);
             }
         }
 
@@ -621,5 +635,48 @@ class LoginAttemptIssuer implements RealtimeIssuerInterface
         }
 
         return $filtered;
+    }
+
+    /**
+     * Đánh dấu record đã được report (cho failed login attempts)
+     *
+     * @param string $ip
+     * @param string $username
+     * @return void
+     */
+    private function markRecordAsReported(string $ip, string $username): void
+    {
+        $attempts = get_option($this->optionKey, []);
+        $key = md5($ip . $username);
+
+        if (isset($attempts[$key])) {
+            $attempts[$key]['reported'] = true;
+            $attempts[$key]['reported_at'] = time();
+            update_option($this->optionKey, $attempts);
+        }
+    }
+
+    /**
+     * Đánh dấu tất cả records của IP đã được report (cho brute force)
+     *
+     * @param string $ip
+     * @return void
+     */
+    private function markIpRecordsAsReported(string $ip): void
+    {
+        $attempts = get_option($this->optionKey, []);
+        $updated = false;
+
+        foreach ($attempts as $key => $record) {
+            if ($record['ip'] === $ip) {
+                $attempts[$key]['reported'] = true;
+                $attempts[$key]['reported_at'] = time();
+                $updated = true;
+            }
+        }
+
+        if ($updated) {
+            update_option($this->optionKey, $attempts);
+        }
     }
 }

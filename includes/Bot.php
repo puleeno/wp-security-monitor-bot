@@ -612,6 +612,19 @@ class Bot extends MonitorAbstract
             'wp-security-monitor-bot',
             [$this, 'renderAdminPage']
         );
+
+        // Migration page - chỉ hiển thị khi cần migration
+        $dbVersion = get_option('wp_security_monitor_db_version', '0');
+        if (version_compare($dbVersion, '1.2', '<')) {
+            add_submenu_page(
+                'puleeno-security',
+                'Database Migration',
+                '<span style="color: #d63638;">⚠️ Migration</span>',
+                'manage_options',
+                'wp-security-monitor-migration',
+                [$this, 'renderMigrationPage']
+            );
+        }
     }
 
         /**
@@ -669,13 +682,43 @@ class Bot extends MonitorAbstract
     }
 
     /**
+     * Render migration page
+     *
+     * @return void
+     */
+    public function renderMigrationPage(): void
+    {
+        include dirname(__FILE__) . '/../admin/migration-page.php';
+    }
+
+    /**
      * Kiểm tra và cập nhật database schema
      *
      * @return void
      */
     public function checkDatabaseSchema(): void
     {
-        Schema::updateSchema();
+        $currentVersion = get_option('wp_security_monitor_db_version', '0');
+        $latestVersion = '1.2';
+
+        // Nếu cần migration
+        if (version_compare($currentVersion, $latestVersion, '<')) {
+            Schema::updateSchema();
+
+            // Show admin notice sau khi migrate
+            $newVersion = get_option('wp_security_monitor_db_version');
+            if ($newVersion !== $currentVersion) {
+                add_action('admin_notices', function() use ($currentVersion, $newVersion) {
+                    echo '<div class="notice notice-success is-dismissible">';
+                    echo '<p><strong>WP Security Monitor:</strong> Database đã được cập nhật từ version ' . esc_html($currentVersion) . ' lên ' . esc_html($newVersion) . '!</p>';
+                    echo '</div>';
+                });
+
+                if (WP_DEBUG) {
+                    error_log('[WP Security Monitor] Database migrated from ' . $currentVersion . ' to ' . $newVersion);
+                }
+            }
+        }
     }
 
     /**
@@ -1003,6 +1046,23 @@ class Bot extends MonitorAbstract
                         echo "<div class=\"notice {$class}\"><p>{$message}</p></div>";
                     });
                     break;
+            }
+        }
+
+        // Handle database migration
+        if (isset($_POST['action']) && $_POST['action'] === 'migrate_database' && wp_verify_nonce($_POST['_wpnonce'], 'security_monitor_migrate_db')) {
+            $oldVersion = get_option('wp_security_monitor_db_version', '0');
+            Schema::updateSchema();
+            $newVersion = get_option('wp_security_monitor_db_version');
+
+            add_action('admin_notices', function() use ($oldVersion, $newVersion) {
+                echo '<div class="notice notice-success is-dismissible">';
+                echo '<p><strong>✅ Migration hoàn tất!</strong> Database đã được cập nhật từ version <code>' . esc_html($oldVersion) . '</code> lên <code>' . esc_html($newVersion) . '</code></p>';
+                echo '</div>';
+            });
+
+            if (WP_DEBUG) {
+                error_log('[WP Security Monitor] Manual migration from ' . $oldVersion . ' to ' . $newVersion);
             }
         }
     }

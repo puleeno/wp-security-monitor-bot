@@ -71,6 +71,9 @@ class Schema
             last_detected datetime NOT NULL,
             detection_count int(11) DEFAULT 1,
             is_ignored tinyint(1) DEFAULT 0,
+            viewed tinyint(1) DEFAULT 0,
+            viewed_by bigint(20) unsigned DEFAULT NULL,
+            viewed_at datetime DEFAULT NULL,
             ignored_by bigint(20) unsigned DEFAULT NULL,
             ignored_at datetime DEFAULT NULL,
             ignore_reason text DEFAULT NULL,
@@ -89,6 +92,7 @@ class Schema
             KEY idx_first_detected (first_detected),
             KEY idx_last_detected (last_detected),
             KEY idx_is_ignored (is_ignored),
+            KEY idx_viewed (viewed),
             KEY idx_file_path (file_path(255)),
             KEY idx_line_code_hash (line_code_hash),
             KEY idx_ip_address (ip_address)
@@ -254,7 +258,7 @@ class Schema
         }
 
         // Lưu phiên bản database
-        update_option('wp_security_monitor_db_version', '1.1');
+        update_option('wp_security_monitor_db_version', '1.2');
     }
 
     /**
@@ -372,6 +376,11 @@ class Schema
             }
 
             update_option('wp_security_monitor_db_version', $latestVersion);
+            update_option('wp_security_monitor_db_updated_at', time());
+
+            if (WP_DEBUG) {
+                error_log('[WP Security Monitor] Database migrated to version ' . $latestVersion);
+            }
         }
     }
 

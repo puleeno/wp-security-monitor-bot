@@ -62,4 +62,37 @@ if (!class_exists('WP_Security_Monitor_Bot')) {
         array_unshift($links, $settings_link);
         return $links;
     });
+
+    // Check for database migration after plugin update
+    add_action('admin_init', function() {
+        $currentVersion = get_option('wp_security_monitor_db_version', '0');
+        $latestVersion = '1.2';
+        $pluginVersion = get_option('wp_security_monitor_plugin_version', '0');
+        $currentPluginVersion = '1.0.0';
+
+        // Nếu plugin được update (version thay đổi)
+        if (version_compare($pluginVersion, $currentPluginVersion, '<')) {
+            update_option('wp_security_monitor_plugin_version', $currentPluginVersion);
+
+            // Check nếu cần database migration
+            if (version_compare($currentVersion, $latestVersion, '<')) {
+                add_action('admin_notices', function() use ($currentVersion, $latestVersion) {
+                    // Không hiển thị notice nếu đang ở migration page
+                    $screen = get_current_screen();
+                    if ($screen && $screen->id === 'puleeno-security_page_wp-security-monitor-migration') {
+                        return;
+                    }
+
+                    echo '<div class="notice notice-warning" style="padding: 15px; border-left-color: #d63638;">';
+                    echo '<h3 style="margin-top: 0;">⚠️ WP Security Monitor - Cần Migration</h3>';
+                    echo '<p><strong>Plugin đã được cập nhật!</strong> Database cần được migrate từ version <code>' . esc_html($currentVersion) . '</code> lên <code>' . esc_html($latestVersion) . '</code> để sử dụng các tính năng mới.</p>';
+                    echo '<p>';
+                    echo '<a href="' . admin_url('admin.php?page=wp-security-monitor-migration') . '" class="button button-primary">🚀 Chạy Migration Ngay</a> ';
+                    echo '<a href="' . admin_url('admin.php?page=wp-security-monitor-bot') . '" class="button button-secondary">Xem Settings</a>';
+                    echo '</p>';
+                    echo '</div>';
+                });
+            }
+        }
+    });
 }
