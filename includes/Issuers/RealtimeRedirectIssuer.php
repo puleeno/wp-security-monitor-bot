@@ -126,15 +126,20 @@ class RealtimeRedirectIssuer implements RealtimeIssuerInterface
 
     /**
      * Intercept wp_die calls
+     *
+     * @param mixed $handler The wp_die handler
+     * @param string|null $title Optional title (not always passed by WordPress)
+     * @return mixed
      */
-    public function interceptWpDie($handler, $title)
+    public function interceptWpDie($handler, $title = null)
     {
         if (!$this->isEnabled()) {
             return $handler;
         }
 
         // Log wp_die
-        $this->logRedirect('wp_die: ' . $title, 'wp_die', 0);
+        $titleText = $title ? $title : 'unknown';
+        $this->logRedirect('wp_die: ' . $titleText, 'wp_die', 0);
 
         return $handler;
     }

@@ -65,15 +65,12 @@ if (WP_DEBUG) {
     error_log('[Dashboard Debug] Total Active Channels: ' . count(array_filter($channelStatus)));
 }
 
-// Get issuers status - estimate based on config
-$issuersConfig = get_option('wp_security_monitor_issuers_config', []);
-$issuerStatus = [
-    'ExternalRedirectIssuer' => $issuersConfig['external_redirect']['enabled'] ?? true,
-    'LoginAttemptIssuer' => $issuersConfig['login_attempt']['enabled'] ?? true,
-    'FileChangeIssuer' => $issuersConfig['file_change']['enabled'] ?? true,
-    'AdminUserCreatedIssuer' => $issuersConfig['admin_user_created']['enabled'] ?? true,
-    'EvalFunctionIssuer' => $issuersConfig['eval_function']['enabled'] ?? true,
-];
+// Get issuers status - lấy THỰC TẾ từ Bot
+$activeIssuers = $bot->getIssuers();
+$issuerStatus = [];
+foreach ($activeIssuers as $issuer) {
+    $issuerStatus[$issuer->getName()] = true; // Issuer đang active
+}
 
 ?>
 
