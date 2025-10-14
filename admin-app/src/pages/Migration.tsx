@@ -26,14 +26,22 @@ interface MigrationStatus {
   last_updated: string | null;
 }
 
+interface ChangelogEntry {
+  version: string;
+  content: string;
+  file: string;
+}
+
 const Migration: React.FC = () => {
   const dispatch = useDispatch();
   const [loading, setLoading] = useState(true);
   const [migrating, setMigrating] = useState(false);
   const [status, setStatus] = useState<MigrationStatus | null>(null);
+  const [changelog, setChangelog] = useState<ChangelogEntry[]>([]);
 
   useEffect(() => {
     loadMigrationStatus();
+    loadChangelog();
   }, []);
 
   const loadMigrationStatus = async () => {
@@ -49,6 +57,21 @@ const Migration: React.FC = () => {
       console.error('Failed to load migration status:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadChangelog = async () => {
+    try {
+      const response = await ajax({
+        url: buildUrl('wp-security-monitor/v1/migration/changelog'),
+        method: 'GET',
+        headers: getApiHeaders(),
+      }).toPromise();
+
+      const data = response?.response as any;
+      setChangelog(data?.changelog || []);
+    } catch (error) {
+      console.error('Failed to load changelog:', error);
     }
   };
 
@@ -229,46 +252,54 @@ const Migration: React.FC = () => {
       )}
 
       {/* Changelog */}
-      <Card title="📝 Changelog - Version 1.2">
+      <Card title="📝 Database Changelog">
         <Timeline>
-          <Timeline.Item color="green">
-            <Text strong>✨ New Features</Text>
-            <ul style={{ marginTop: 8 }}>
-              <li>Thêm <code>viewed</code>, <code>viewed_by</code>, <code>viewed_at</code> columns cho Issues</li>
-              <li>Chức năng "Mark as Viewed" để track issues đã check</li>
-              <li>Realtime notification cho issues đã viewed</li>
-              <li>React TypeScript Admin UI với Ant Design</li>
-            </ul>
-          </Timeline.Item>
+          {changelog.map((entry) => {
+            const lines = entry.content.split('\n');
+            const version = lines.find(line => line.startsWith('Version:'))?.replace('Version:', '').trim() || entry.version;
+            const date = lines.find(line => line.startsWith('Date:'))?.replace('Date:', '').trim() || '';
+            const type = lines.find(line => line.startsWith('Type:'))?.replace('Type:', '').trim() || '';
+            const title = lines.find(line => line.startsWith('Title:'))?.replace('Title:', '').trim() || '';
 
-          <Timeline.Item color="blue">
-            <Text strong>🔧 Database Changes</Text>
-            <ul style={{ marginTop: 8 }}>
-              <li><code>ALTER TABLE security_monitor_issues ADD COLUMN viewed TINYINT(1) DEFAULT 0</code></li>
-              <li><code>ALTER TABLE security_monitor_issues ADD COLUMN viewed_by BIGINT UNSIGNED</code></li>
-              <li><code>ALTER TABLE security_monitor_issues ADD COLUMN viewed_at DATETIME</code></li>
-            </ul>
-          </Timeline.Item>
+            const getColor = (type: string) => {
+              if (type.includes('Major')) return 'red';
+              if (type.includes('Minor')) return 'blue';
+              if (type.includes('Patch')) return 'green';
+              return 'gray';
+            };
 
-          <Timeline.Item color="orange">
-            <Text strong>⚡ Improvements</Text>
-            <ul style={{ marginTop: 8 }}>
-              <li>Improved backtrace accuracy cho Login Attempt Monitor</li>
-              <li>Better notification logic: Realtime vs Scheduled issuers</li>
-              <li>Prevent notification spam cho brute force attacks</li>
-              <li>Enhanced issue details với full backtrace</li>
-            </ul>
-          </Timeline.Item>
+            const getIcon = (type: string) => {
+              if (type.includes('Major')) return '🚀';
+              if (type.includes('Minor')) return '✨';
+              if (type.includes('Patch')) return '🔧';
+              return '📝';
+            };
 
-          <Timeline.Item color="purple">
-            <Text strong>🐛 Bug Fixes</Text>
-            <ul style={{ marginTop: 8 }}>
-              <li>Fixed ArgumentCountError trong RealtimeRedirectIssuer</li>
-              <li>Fixed backtrace showing detection code instead of event origin</li>
-              <li>Fixed dashboard issuer count displaying wrong number</li>
-              <li>Fixed Telegram markdown escaping issues</li>
-            </ul>
-          </Timeline.Item>
+            return (
+              <Timeline.Item key={entry.version} color={getColor(type)}>
+                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                  <div>
+                    <Tag color={getColor(type)}>{getIcon(type)} v{version}</Tag>
+                    <Text strong>{title}</Text>
+                    <Text type="secondary" style={{ marginLeft: 8 }}>({date})</Text>
+                  </div>
+
+                  <div style={{
+                    backgroundColor: '#f5f5f5',
+                    padding: 12,
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    whiteSpace: 'pre-wrap',
+                    maxHeight: 200,
+                    overflow: 'auto'
+                  }}>
+                    {entry.content}
+                  </div>
+                </Space>
+              </Timeline.Item>
+            );
+          })}
         </Timeline>
       </Card>
     </div>

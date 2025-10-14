@@ -20,7 +20,6 @@ const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 interface PendingRedirect {
-  id: number;
   domain: string;
   url: string;
   source_url: string;
@@ -30,35 +29,53 @@ interface PendingRedirect {
   status: 'pending' | 'approved' | 'rejected';
   user_agent?: string;
   ip_address?: string;
+  contexts?: string;
+  approved_by?: number;
+  approved_at?: string;
+  rejected_by?: number;
+  rejected_at?: string;
+  reject_reason?: string;
 }
 
 const ExternalRedirects: React.FC = () => {
   const dispatch = useDispatch();
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState<number | null>(null);
+  const [processing, setProcessing] = useState<string | null>(null);
   const [redirects, setRedirects] = useState<PendingRedirect[]>([]);
   const [selectedRedirect, setSelectedRedirect] = useState<PendingRedirect | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectModal, setRejectModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
 
   useEffect(() => {
     loadRedirects();
   }, []);
 
-  const loadRedirects = async () => {
+  const loadRedirects = async (status?: string) => {
     try {
       setLoading(true);
+      const queryParam = status ? `?status=${status}` : '';
+      const url = buildUrl(`wp-security-monitor/v1/redirects${queryParam}`);
+
+      console.log('🔍 Loading redirects:', { status, url });
+
       const response = await ajax({
-        url: buildUrl('wp-security-monitor/v1/redirects/pending'),
+        url,
         method: 'GET',
         headers: getApiHeaders(),
       }).toPromise();
 
+      console.log('📡 API Response:', response);
+
       const data = response?.response as any;
+      console.log('📊 Parsed data:', data);
+
       setRedirects(data?.redirects || []);
+
+      console.log('✅ Redirects loaded:', data?.redirects?.length || 0);
     } catch (error: any) {
-      console.error('Failed to load redirects:', error);
+      console.error('❌ Failed to load redirects:', error);
       dispatch(addNotification({
         type: 'error',
         message: `Lỗi load redirects: ${error.message}`,
@@ -68,16 +85,20 @@ const ExternalRedirects: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    loadRedirects(activeTab);
+  }, [activeTab]);
+
   const handleApprove = async (redirect: PendingRedirect) => {
     if (!window.confirm(`✅ Approve domain "${redirect.domain}"?\n\nDomain này sẽ được thêm vào whitelist và không còn cảnh báo nữa.`)) {
       return;
     }
 
     try {
-      setProcessing(redirect.id);
+      setProcessing(redirect.domain);
 
       const response = await ajax({
-        url: buildUrl(`wp-security-monitor/v1/redirects/${redirect.id}/approve`),
+        url: buildUrl(`wp-security-monitor/v1/redirects/${encodeURIComponent(redirect.domain)}/approve`),
         method: 'POST',
         headers: getApiHeaders(),
       }).toPromise();
@@ -105,10 +126,10 @@ const ExternalRedirects: React.FC = () => {
     if (!selectedRedirect) return;
 
     try {
-      setProcessing(selectedRedirect.id);
+      setProcessing(selectedRedirect.domain);
 
       const response = await ajax({
-        url: buildUrl(`wp-security-monitor/v1/redirects/${selectedRedirect.id}/reject`),
+        url: buildUrl(`wp-security-monitor/v1/redirects/${encodeURIComponent(selectedRedirect.domain)}/reject`),
         method: 'POST',
         headers: getApiHeaders(),
         body: { reason: rejectReason },
@@ -219,7 +240,7 @@ const ExternalRedirects: React.FC = () => {
                 type="primary"
                 icon={<CheckOutlined />}
                 onClick={() => handleApprove(record)}
-                loading={processing === record.id}
+                loading={processing === record.domain}
               >
                 Approve
               </Button>
@@ -231,7 +252,7 @@ const ExternalRedirects: React.FC = () => {
                   setSelectedRedirect(record);
                   setRejectModal(true);
                 }}
-                loading={processing === record.id}
+                loading={processing === record.domain}
               >
                 Reject
               </Button>
@@ -243,24 +264,19 @@ const ExternalRedirects: React.FC = () => {
   ];
 
   const pendingCount = redirects.filter(r => r.status === 'pending').length;
+  const approvedCount = redirects.filter(r => r.status === 'approved').length;
+  const rejectedCount = redirects.filter(r => r.status === 'rejected').length;
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <Title level={2} style={{ margin: 0 }}>🔀 External Redirects</Title>
-        <Space>
-          {pendingCount > 0 && (
-            <Tag color="orange" icon={<WarningOutlined />}>
-              {pendingCount} pending
-            </Tag>
-          )}
-          <Button icon={<ReloadOutlined />} onClick={loadRedirects}>
-            Refresh
-          </Button>
-        </Space>
+        <Button icon={<ReloadOutlined />} onClick={() => loadRedirects(activeTab)}>
+          Refresh
+        </Button>
       </div>
 
-      {pendingCount > 0 && (
+      {activeTab === 'pending' && pendingCount > 0 && (
         <Alert
           message={`⚠️ Có ${pendingCount} external redirect(s) đang chờ review`}
           description="Kiểm tra và approve/reject các domain redirect để bảo vệ website khỏi phishing và malware."
@@ -270,24 +286,70 @@ const ExternalRedirects: React.FC = () => {
         />
       )}
 
-      {redirects.length === 0 && (
-        <Alert
-          message="✅ Không có pending redirects"
-          description="Tất cả external redirects đã được review. Website đang an toàn!"
-          type="success"
-          showIcon
-          style={{ marginBottom: 24 }}
-        />
-      )}
+      <Card
+        tabList={[
+          {
+            key: 'pending',
+            tab: (
+              <Space>
+                <WarningOutlined />
+                Pending
+                {pendingCount > 0 && <Tag color="orange">{pendingCount}</Tag>}
+              </Space>
+            ),
+          },
+          {
+            key: 'approved',
+            tab: (
+              <Space>
+                <CheckOutlined />
+                Approved (Whitelist)
+                {approvedCount > 0 && <Tag color="green">{approvedCount}</Tag>}
+              </Space>
+            ),
+          },
+          {
+            key: 'rejected',
+            tab: (
+              <Space>
+                <CloseOutlined />
+                Rejected (Blacklist)
+                {rejectedCount > 0 && <Tag color="red">{rejectedCount}</Tag>}
+              </Space>
+            ),
+          },
+        ]}
+        activeTabKey={activeTab}
+        onTabChange={(key) => setActiveTab(key as any)}
+      >
+        {redirects.length === 0 && (
+          <Alert
+            message={
+              activeTab === 'pending'
+                ? '✅ Không có pending redirects'
+                : activeTab === 'approved'
+                ? 'Chưa có domain nào được approve'
+                : 'Chưa có domain nào bị reject'
+            }
+            description={
+              activeTab === 'pending'
+                ? 'Tất cả external redirects đã được review. Website đang an toàn!'
+                : undefined
+            }
+            type={activeTab === 'pending' ? 'success' : 'info'}
+            showIcon
+          />
+        )}
 
-      <Card>
-        <Table
-          columns={columns}
-          dataSource={redirects}
-          rowKey="id"
-          pagination={{ pageSize: 20 }}
-          locale={{ emptyText: 'Không có redirects nào' }}
-        />
+        {redirects.length > 0 && (
+          <Table
+            columns={columns}
+            dataSource={redirects}
+            rowKey="domain"
+            pagination={{ pageSize: 20 }}
+            locale={{ emptyText: 'Không có redirects nào' }}
+          />
+        )}
       </Card>
 
       {/* Details Drawer */}
@@ -364,7 +426,7 @@ const ExternalRedirects: React.FC = () => {
                   type="primary"
                   icon={<CheckOutlined />}
                   onClick={() => handleApprove(selectedRedirect)}
-                  loading={processing === selectedRedirect.id}
+                  loading={processing === selectedRedirect.domain}
                   size="large"
                 >
                   Approve Domain
@@ -376,7 +438,7 @@ const ExternalRedirects: React.FC = () => {
                     setDetailsVisible(false);
                     setRejectModal(true);
                   }}
-                  loading={processing === selectedRedirect.id}
+                  loading={processing === selectedRedirect.domain}
                   size="large"
                 >
                   Reject Domain

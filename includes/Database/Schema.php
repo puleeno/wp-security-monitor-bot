@@ -14,19 +14,9 @@ class Schema
     const TABLE_IGNORE_RULES = 'security_monitor_ignore_rules';
 
     /**
-     * Tên table cho whitelist domains
+     * Tên table cho redirect domains (gộp whitelist, pending, rejected)
      */
-    const TABLE_WHITELIST_DOMAINS = 'security_monitor_whitelist_domains';
-
-    /**
-     * Tên table cho pending domains
-     */
-    const TABLE_PENDING_DOMAINS = 'security_monitor_pending_domains';
-
-    /**
-     * Tên table cho rejected domains
-     */
-    const TABLE_REJECTED_DOMAINS = 'security_monitor_rejected_domains';
+    const TABLE_REDIRECT_DOMAINS = 'security_monitor_redirect_domains';
 
     /**
      * Tên table cho audit logs
@@ -124,24 +114,9 @@ class Schema
             KEY idx_expires_at (expires_at)
         ) $charset_collate;";
 
-        // Table cho whitelist domains
-        $whitelistTable = $wpdb->prefix . self::TABLE_WHITELIST_DOMAINS;
-        $whitelistSQL = "CREATE TABLE IF NOT EXISTS $whitelistTable (
-            domain varchar(255) NOT NULL,
-            reason text DEFAULT NULL,
-            added_by bigint(20) unsigned DEFAULT NULL,
-            added_at datetime NOT NULL,
-            usage_count int(11) DEFAULT 0,
-            last_used datetime DEFAULT NULL,
-            PRIMARY KEY (domain),
-            KEY idx_added_by (added_by),
-            KEY idx_added_at (added_at),
-            KEY idx_usage_count (usage_count)
-        ) $charset_collate;";
-
-        // Table cho pending domains
-        $pendingTable = $wpdb->prefix . self::TABLE_PENDING_DOMAINS;
-        $pendingSQL = "CREATE TABLE IF NOT EXISTS $pendingTable (
+        // Table cho redirect domains (gộp whitelist, pending, rejected)
+        $redirectTable = $wpdb->prefix . self::TABLE_REDIRECT_DOMAINS;
+        $redirectSQL = "CREATE TABLE IF NOT EXISTS $redirectTable (
             domain varchar(255) NOT NULL,
             first_detected datetime NOT NULL,
             detection_count int(11) DEFAULT 1,
@@ -152,31 +127,16 @@ class Schema
             rejected_by bigint(20) unsigned DEFAULT NULL,
             rejected_at datetime DEFAULT NULL,
             reject_reason text DEFAULT NULL,
+            usage_count int(11) DEFAULT 0,
+            last_used datetime DEFAULT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (domain),
             KEY idx_status (status),
             KEY idx_first_detected (first_detected),
             KEY idx_approved_by (approved_by),
-            KEY idx_rejected_by (rejected_by)
-        ) $charset_collate;";
-
-        // Table để lưu các domains đã bị reject
-        $rejectedSQL = "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}" . self::TABLE_REJECTED_DOMAINS . " (
-            id mediumint(9) NOT NULL AUTO_INCREMENT,
-            domain varchar(255) NOT NULL,
-            first_detected datetime DEFAULT CURRENT_TIMESTAMP,
-            detection_count int(11) DEFAULT 1,
-            last_detected datetime DEFAULT CURRENT_TIMESTAMP,
-            rejected_at datetime DEFAULT CURRENT_TIMESTAMP,
-            rejected_by bigint(20) UNSIGNED,
-            reject_reason text,
-            contexts longtext COMMENT 'JSON array of detection contexts',
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
-            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            UNIQUE KEY domain (domain),
-            KEY idx_domain (domain),
-            KEY idx_rejected_at (rejected_at),
-            KEY idx_rejected_by (rejected_by)
+            KEY idx_rejected_by (rejected_by),
+            KEY idx_usage_count (usage_count)
         ) $charset_collate;";
 
         // Audit log table
@@ -225,9 +185,7 @@ class Schema
 
         dbDelta($issuesSQL);
         dbDelta($ignoreSQL);
-        dbDelta($whitelistSQL);
-        dbDelta($pendingSQL);
-        dbDelta($rejectedSQL);
+        dbDelta($redirectSQL);
         dbDelta($auditSQL);
         dbDelta($notificationsSQL);
 
@@ -258,7 +216,7 @@ class Schema
         }
 
         // Lưu phiên bản database
-        update_option('wp_security_monitor_db_version', '1.2');
+        update_option('wp_security_monitor_db_version', '1.3');
     }
 
     /**
@@ -354,7 +312,7 @@ class Schema
     public static function updateSchema(): void
     {
         $currentVersion = get_option('wp_security_monitor_db_version', '0');
-        $latestVersion = '1.2';
+        $latestVersion = '1.3';
 
         if (version_compare($currentVersion, $latestVersion, '<')) {
             if (version_compare($currentVersion, '1.0', '<')) {
@@ -373,6 +331,11 @@ class Schema
             // Migration từ version 1.1 lên 1.2: thêm viewed columns
             if (version_compare($currentVersion, '1.2', '<')) {
                 self::addViewedColumns();
+            }
+
+            // Migration từ version 1.2 lên 1.3: merge domain tables
+            if (version_compare($currentVersion, '1.3', '<')) {
+                self::migrateDomainTables();
             }
 
             update_option('wp_security_monitor_db_version', $latestVersion);
@@ -531,5 +494,191 @@ class Schema
         );
 
         return $stats;
+    }
+
+    /**
+     * Migration: Merge 3 domain tables into 1 redirect_domains table
+     *
+     * @return bool
+     */
+    public static function migrateDomainTables(): bool
+    {
+        global $wpdb;
+
+        try {
+            // Create new redirect_domains table
+            $redirectTable = $wpdb->prefix . self::TABLE_REDIRECT_DOMAINS;
+            $charset_collate = $wpdb->get_charset_collate();
+
+            $redirectSQL = "CREATE TABLE IF NOT EXISTS $redirectTable (
+                domain varchar(255) NOT NULL,
+                first_detected datetime NOT NULL,
+                detection_count int(11) DEFAULT 1,
+                status enum('pending','approved','rejected') DEFAULT 'pending',
+                contexts longtext DEFAULT NULL,
+                approved_by bigint(20) unsigned DEFAULT NULL,
+                approved_at datetime DEFAULT NULL,
+                rejected_by bigint(20) unsigned DEFAULT NULL,
+                rejected_at datetime DEFAULT NULL,
+                reject_reason text DEFAULT NULL,
+                usage_count int(11) DEFAULT 0,
+                last_used datetime DEFAULT NULL,
+                created_at datetime DEFAULT CURRENT_TIMESTAMP,
+                updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (domain),
+                KEY idx_status (status),
+                KEY idx_first_detected (first_detected),
+                KEY idx_approved_by (approved_by),
+                KEY idx_rejected_by (rejected_by),
+                KEY idx_usage_count (usage_count)
+            ) $charset_collate;";
+
+            require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+            dbDelta($redirectSQL);
+
+            // Migrate data from WordPress options (primary source)
+            $optionMappings = [
+                'wp_security_monitor_pending_domains' => 'pending',
+                'wp_security_monitor_whitelist_domains' => 'approved',
+                'wp_security_monitor_rejected_domains' => 'rejected'
+            ];
+
+            foreach ($optionMappings as $optionName => $status) {
+                $optionData = get_option($optionName, []);
+
+                if (is_array($optionData) && !empty($optionData)) {
+                    foreach ($optionData as $domain => $data) {
+                        // Handle both array and object data
+                        if (is_array($data)) {
+                            $domainData = $data;
+                        } else {
+                            $domainData = json_decode($data, true) ?: [];
+                        }
+
+                        $insertData = [
+                            'domain' => $domain,
+                            'status' => $status,
+                            'first_detected' => $domainData['first_detected'] ?? current_time('mysql'),
+                            'detection_count' => $domainData['detection_count'] ?? 1,
+                            'contexts' => isset($domainData['contexts']) ? json_encode($domainData['contexts']) : null,
+                            'usage_count' => $domainData['usage_count'] ?? 0,
+                            'last_used' => $domainData['last_used'] ?? null,
+                        ];
+
+                        // Add status-specific fields
+                        if ($status === 'approved') {
+                            $insertData['approved_by'] = $domainData['added_by'] ?? null;
+                            $insertData['approved_at'] = $domainData['added_at'] ?? current_time('mysql');
+                        } elseif ($status === 'rejected') {
+                            $insertData['rejected_by'] = $domainData['rejected_by'] ?? null;
+                            $insertData['rejected_at'] = $domainData['rejected_at'] ?? current_time('mysql');
+                            $insertData['reject_reason'] = $domainData['reject_reason'] ?? null;
+                        }
+
+                        // Insert into new table (ignore duplicates)
+                        $wpdb->query($wpdb->prepare(
+                            "INSERT IGNORE INTO $redirectTable (domain, status, first_detected, detection_count, contexts, approved_by, approved_at, rejected_by, rejected_at, reject_reason, usage_count, last_used)
+                             VALUES (%s, %s, %s, %d, %s, %d, %s, %d, %s, %s, %d, %s)",
+                            $insertData['domain'],
+                            $insertData['status'],
+                            $insertData['first_detected'],
+                            $insertData['detection_count'],
+                            $insertData['contexts'],
+                            $insertData['approved_by'],
+                            $insertData['approved_at'],
+                            $insertData['rejected_by'],
+                            $insertData['rejected_at'],
+                            $insertData['reject_reason'],
+                            $insertData['usage_count'],
+                            $insertData['last_used']
+                        ));
+                    }
+                }
+            }
+
+            // Also migrate from old database tables (if they exist)
+            $oldTables = [
+                'security_monitor_whitelist_domains' => 'approved',
+                'security_monitor_pending_domains' => 'pending',
+                'security_monitor_rejected_domains' => 'rejected'
+            ];
+
+            foreach ($oldTables as $oldTable => $status) {
+                $fullOldTable = $wpdb->prefix . $oldTable;
+
+                // Check if old table exists
+                if ($wpdb->get_var("SHOW TABLES LIKE '$fullOldTable'") === $fullOldTable) {
+                    // Get data from old table
+                    $oldData = $wpdb->get_results("SELECT * FROM $fullOldTable", ARRAY_A);
+
+                    foreach ($oldData as $row) {
+                        $insertData = [
+                            'domain' => $row['domain'],
+                            'status' => $status,
+                            'first_detected' => $row['first_detected'] ?? $row['added_at'] ?? current_time('mysql'),
+                            'detection_count' => $row['detection_count'] ?? 1,
+                            'contexts' => $row['contexts'] ?? null,
+                            'usage_count' => $row['usage_count'] ?? 0,
+                            'last_used' => $row['last_used'] ?? null,
+                        ];
+
+                        // Add status-specific fields
+                        if ($status === 'approved') {
+                            $insertData['approved_by'] = $row['added_by'] ?? null;
+                            $insertData['approved_at'] = $row['added_at'] ?? current_time('mysql');
+                        } elseif ($status === 'rejected') {
+                            $insertData['rejected_by'] = $row['rejected_by'] ?? null;
+                            $insertData['rejected_at'] = $row['rejected_at'] ?? current_time('mysql');
+                            $insertData['reject_reason'] = $row['reject_reason'] ?? null;
+                        }
+
+                        // Insert into new table (ignore duplicates)
+                        $wpdb->query($wpdb->prepare(
+                            "INSERT IGNORE INTO $redirectTable (domain, status, first_detected, detection_count, contexts, approved_by, approved_at, rejected_by, rejected_at, reject_reason, usage_count, last_used)
+                             VALUES (%s, %s, %s, %d, %s, %d, %s, %d, %s, %s, %d, %s)",
+                            $insertData['domain'],
+                            $insertData['status'],
+                            $insertData['first_detected'],
+                            $insertData['detection_count'],
+                            $insertData['contexts'],
+                            $insertData['approved_by'],
+                            $insertData['approved_at'],
+                            $insertData['rejected_by'],
+                            $insertData['rejected_at'],
+                            $insertData['reject_reason'],
+                            $insertData['usage_count'],
+                            $insertData['last_used']
+                        ));
+                    }
+                }
+            }
+
+            // Drop old tables after successful migration
+            foreach ($oldTables as $oldTable => $status) {
+                $fullOldTable = $wpdb->prefix . $oldTable;
+
+                if ($wpdb->get_var("SHOW TABLES LIKE '$fullOldTable'") === $fullOldTable) {
+                    $wpdb->query("DROP TABLE IF EXISTS $fullOldTable");
+
+                    if (WP_DEBUG) {
+                        error_log('[WP Security Monitor] Dropped old table: ' . $fullOldTable);
+                    }
+                }
+            }
+
+            // Clean up old options (optional - keep for backward compatibility or remove if not needed)
+            // delete_option('wp_security_monitor_pending_domains');
+            // delete_option('wp_security_monitor_whitelist_domains');
+            // delete_option('wp_security_monitor_rejected_domains');
+
+            if (WP_DEBUG) {
+                error_log('[WP Security Monitor] Domain tables migration completed successfully');
+            }
+
+            return true;
+        } catch (Exception $e) {
+            error_log('Migration failed: ' . $e->getMessage());
+            return false;
+        }
     }
 }

@@ -127,11 +127,19 @@ class RestApi extends WP_REST_Controller
             ],
         ]);
 
-        // External Redirects endpoints
-        register_rest_route($this->namespace, '/redirects/pending', [
+        register_rest_route($this->namespace, '/migration/changelog', [
             [
                 'methods' => WP_REST_Server::READABLE,
-                'callback' => [$this, 'getPendingRedirects'],
+                'callback' => [$this, 'getMigrationChangelog'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
+
+        // External Redirects endpoints
+        register_rest_route($this->namespace, '/redirects', [
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [$this, 'getRedirects'],
                 'permission_callback' => [$this, 'checkPermissions'],
             ],
         ]);
@@ -603,7 +611,7 @@ class RestApi extends WP_REST_Controller
     public function getMigrationStatus()
     {
         $currentVersion = get_option('wp_security_monitor_db_version', '0');
-        $latestVersion = '1.2';
+        $latestVersion = '1.3';
         $lastUpdated = get_option('wp_security_monitor_db_updated_at', null);
 
         $status = [
@@ -625,13 +633,18 @@ class RestApi extends WP_REST_Controller
     {
         try {
             $schema = new \Puleeno\SecurityBot\WebMonitor\Database\Schema();
-            $result = $schema->updateSchema();
 
-            if ($result) {
+            // Run domain tables migration
+            $domainMigrationResult = $schema->migrateDomainTables();
+
+            // Run general schema update
+            $schemaResult = $schema->updateSchema();
+
+            if ($domainMigrationResult && $schemaResult) {
                 return new WP_REST_Response([
                     'success' => true,
-                    'message' => 'Migration completed successfully!',
-                    'new_version' => '1.2',
+                    'message' => 'Migration completed successfully! Domain tables merged into redirect_domains.',
+                    'new_version' => '1.3',
                 ], 200);
             }
 
@@ -648,16 +661,56 @@ class RestApi extends WP_REST_Controller
     }
 
     /**
-     * Get pending redirects
+     * Get migration changelog
      *
      * @return WP_REST_Response
      */
-    public function getPendingRedirects()
+    public function getMigrationChangelog()
+    {
+        $changelogDir = plugin_dir_path(__FILE__) . '../';
+        $changelogFiles = glob($changelogDir . 'database-changelog-v*.txt');
+
+        $changelog = [];
+
+        foreach ($changelogFiles as $file) {
+            $content = file_get_contents($file);
+            if ($content) {
+                $version = basename($file, '.txt');
+                $version = str_replace('database-changelog-v', '', $version);
+
+                $changelog[] = [
+                    'version' => $version,
+                    'content' => $content,
+                    'file' => basename($file)
+                ];
+            }
+        }
+
+        // Sort by version (newest first)
+        usort($changelog, function($a, $b) {
+            return version_compare($b['version'], $a['version']);
+        });
+
+        return new WP_REST_Response([
+            'changelog' => $changelog,
+            'total' => count($changelog),
+        ], 200);
+    }
+
+    /**
+     * Get redirects (với filter theo status)
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function getRedirects(WP_REST_Request $request)
     {
         global $wpdb;
 
-        // Table for tracking pending redirects
-        $table = $wpdb->prefix . 'security_monitor_pending_redirects';
+        $status = $request->get_param('status') ?? 'pending';
+
+        // Table for tracking redirect domains
+        $table = $wpdb->prefix . 'security_monitor_redirect_domains';
 
         // Check if table exists, if not return empty
         $tableExists = $wpdb->get_var("SHOW TABLES LIKE '$table'") === $table;
@@ -670,13 +723,36 @@ class RestApi extends WP_REST_Controller
         }
 
         $redirects = $wpdb->get_results(
-            "SELECT * FROM $table ORDER BY last_detected DESC LIMIT 100",
+            $wpdb->prepare(
+                "SELECT
+                    domain,
+                    first_detected,
+                    detection_count,
+                    status,
+                    contexts,
+                    approved_by,
+                    approved_at,
+                    rejected_by,
+                    rejected_at,
+                    reject_reason,
+                    first_detected as last_detected,
+                    domain as url,
+                    '' as source_url,
+                    '' as user_agent,
+                    '' as ip_address
+                FROM $table
+                WHERE status = %s
+                ORDER BY first_detected DESC
+                LIMIT 100",
+                $status
+            ),
             ARRAY_A
         );
 
         return new WP_REST_Response([
             'redirects' => $redirects ?: [],
             'total' => count($redirects ?: []),
+            'status' => $status,
         ], 200);
     }
 
@@ -689,15 +765,19 @@ class RestApi extends WP_REST_Controller
     public function approveRedirect(WP_REST_Request $request)
     {
         global $wpdb;
-        $redirectId = (int) $request->get_param('id');
-        $table = $wpdb->prefix . 'security_monitor_pending_redirects';
+        $domain = $request->get_param('id'); // Actually domain name
+        $table = $wpdb->prefix . 'security_monitor_redirect_domains';
 
         $updated = $wpdb->update(
             $table,
-            ['status' => 'approved'],
-            ['id' => $redirectId],
-            ['%s'],
-            ['%d']
+            [
+                'status' => 'approved',
+                'approved_by' => get_current_user_id(),
+                'approved_at' => current_time('mysql')
+            ],
+            ['domain' => $domain],
+            ['%s', '%d', '%s'],
+            ['%s']
         );
 
         if ($updated) {
@@ -722,19 +802,21 @@ class RestApi extends WP_REST_Controller
     public function rejectRedirect(WP_REST_Request $request)
     {
         global $wpdb;
-        $redirectId = (int) $request->get_param('id');
+        $domain = $request->get_param('id'); // Actually domain name
         $reason = sanitize_textarea_field($request->get_param('reason') ?? '');
-        $table = $wpdb->prefix . 'security_monitor_pending_redirects';
+        $table = $wpdb->prefix . 'security_monitor_redirect_domains';
 
         $updated = $wpdb->update(
             $table,
             [
                 'status' => 'rejected',
                 'reject_reason' => $reason,
+                'rejected_by' => get_current_user_id(),
+                'rejected_at' => current_time('mysql')
             ],
-            ['id' => $redirectId],
-            ['%s', '%s'],
-            ['%d']
+            ['domain' => $domain],
+            ['%s', '%s', '%d', '%s'],
+            ['%s']
         );
 
         if ($updated) {

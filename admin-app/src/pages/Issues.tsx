@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Card, Table, Tag, Button, Space, Modal, Input, Pagination,
-  Drawer, Descriptions, Typography, Collapse
+  Drawer, Descriptions, Typography, Collapse, Alert
 } from 'antd';
 import {
   EyeOutlined,
@@ -279,12 +279,52 @@ const Issues: React.FC = () => {
               <Descriptions.Item label="Last Detected">
                 {new Date(selectedIssue.last_detected).toLocaleString('vi-VN')}
               </Descriptions.Item>
+              {selectedIssue.is_ignored && selectedIssue.ignored_at && (
+                <>
+                  <Descriptions.Item label="Ignored By">
+                    User ID: {selectedIssue.ignored_by || 'Unknown'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Ignored At">
+                    {new Date(selectedIssue.ignored_at).toLocaleString('vi-VN')}
+                  </Descriptions.Item>
+                </>
+              )}
+              {selectedIssue.status === 'resolved' && selectedIssue.resolved_at && (
+                <>
+                  <Descriptions.Item label="Resolved By">
+                    User ID: {selectedIssue.resolved_by || 'Unknown'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Resolved At">
+                    {new Date(selectedIssue.resolved_at).toLocaleString('vi-VN')}
+                  </Descriptions.Item>
+                </>
+              )}
             </Descriptions>
 
             <div>
               <Title level={5}>📋 Description</Title>
               <Text>{selectedIssue.description}</Text>
             </div>
+
+            {/* Ignore Reason */}
+            {selectedIssue.is_ignored && selectedIssue.ignore_reason && (
+              <Alert
+                message="🚫 Ignore Reason"
+                description={selectedIssue.ignore_reason}
+                type="warning"
+                showIcon
+              />
+            )}
+
+            {/* Resolution Notes */}
+            {selectedIssue.status === 'resolved' && selectedIssue.resolution_notes && (
+              <Alert
+                message="✅ Resolution Notes"
+                description={selectedIssue.resolution_notes}
+                type="success"
+                showIcon
+              />
+            )}
 
             {/* Technical Details */}
             {selectedIssue.details && (

@@ -66,7 +66,7 @@ if (!class_exists('WP_Security_Monitor_Bot')) {
     // Check for database migration after plugin update
     add_action('admin_init', function() {
         $currentVersion = get_option('wp_security_monitor_db_version', '0');
-        $latestVersion = '1.2';
+        $latestVersion = '1.3';
         $pluginVersion = get_option('wp_security_monitor_plugin_version', '0');
         $currentPluginVersion = '1.0.0';
 
