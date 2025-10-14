@@ -1,0 +1,39 @@
+Version: 1.2.0
+Date: 2025-10-13
+Type: Minor Update
+Title: Viewed Tracking & Code Fingerprinting
+
+DESCRIPTION:
+Added viewed tracking for issues and code fingerprinting for duplicate detection.
+
+CHANGES:
+- FEATURE: Viewed Tracking
+  Track which admin viewed which issues with timestamps
+  Impact: Medium | Migration Required: No
+
+- FEATURE: Code Fingerprinting
+  Hash-based duplicate detection for similar issues
+  Impact: Medium | Migration Required: No
+
+TABLES AFFECTED:
+- wp_security_monitor_issues (MODIFIED)
+  Columns Added:
+  - viewed_by bigint(20) unsigned DEFAULT NULL
+  - viewed_at datetime DEFAULT NULL
+  - line_code_hash varchar(64) DEFAULT NULL
+
+  Indexes Added:
+  - idx_viewed_by (viewed_by)
+  - idx_viewed_at (viewed_at)
+  - idx_line_code_hash (line_code_hash)
+
+MIGRATION STATS:
+- Columns Added: 3
+- Indexes Added: 3
+- Backward Compatible: Yes
+
+BENEFITS:
+- Issue Tracking: Know which issues have been reviewed
+- Duplicate Detection: Prevent similar issues from cluttering
+- Audit Trail: Complete viewing history
+- Performance: Optimized indexes for faster queries
