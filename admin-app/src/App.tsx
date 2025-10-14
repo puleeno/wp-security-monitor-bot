@@ -9,6 +9,7 @@ import Settings from './pages/Settings';
 import Security from './pages/Security';
 import AccessControl from './pages/AccessControl';
 import Migration from './pages/Migration';
+import ExternalRedirects from './pages/ExternalRedirects';
 
 const App: React.FC = () => {
   return (
@@ -20,6 +21,7 @@ const App: React.FC = () => {
               <Route path="/" element={<Dashboard />} />
               <Route path="/issues" element={<Issues />} />
               <Route path="/security" element={<Security />} />
+              <Route path="/external-redirects" element={<ExternalRedirects />} />
               <Route path="/access-control" element={<AccessControl />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/migration" element={<Migration />} />

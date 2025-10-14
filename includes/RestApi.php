@@ -126,6 +126,31 @@ class RestApi extends WP_REST_Controller
                 'permission_callback' => [$this, 'checkPermissions'],
             ],
         ]);
+
+        // External Redirects endpoints
+        register_rest_route($this->namespace, '/redirects/pending', [
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [$this, 'getPendingRedirects'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
+
+        register_rest_route($this->namespace, '/redirects/(?P<id>\d+)/approve', [
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'approveRedirect'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
+
+        register_rest_route($this->namespace, '/redirects/(?P<id>\d+)/reject', [
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'rejectRedirect'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
     }
 
     /**
@@ -620,6 +645,109 @@ class RestApi extends WP_REST_Controller
                 'message' => 'Migration error: ' . $e->getMessage(),
             ], 200);
         }
+    }
+
+    /**
+     * Get pending redirects
+     *
+     * @return WP_REST_Response
+     */
+    public function getPendingRedirects()
+    {
+        global $wpdb;
+
+        // Table for tracking pending redirects
+        $table = $wpdb->prefix . 'security_monitor_pending_redirects';
+
+        // Check if table exists, if not return empty
+        $tableExists = $wpdb->get_var("SHOW TABLES LIKE '$table'") === $table;
+
+        if (!$tableExists) {
+            return new WP_REST_Response([
+                'redirects' => [],
+                'total' => 0,
+            ], 200);
+        }
+
+        $redirects = $wpdb->get_results(
+            "SELECT * FROM $table ORDER BY last_detected DESC LIMIT 100",
+            ARRAY_A
+        );
+
+        return new WP_REST_Response([
+            'redirects' => $redirects ?: [],
+            'total' => count($redirects ?: []),
+        ], 200);
+    }
+
+    /**
+     * Approve redirect
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function approveRedirect(WP_REST_Request $request)
+    {
+        global $wpdb;
+        $redirectId = (int) $request->get_param('id');
+        $table = $wpdb->prefix . 'security_monitor_pending_redirects';
+
+        $updated = $wpdb->update(
+            $table,
+            ['status' => 'approved'],
+            ['id' => $redirectId],
+            ['%s'],
+            ['%d']
+        );
+
+        if ($updated) {
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Domain approved successfully',
+            ], 200);
+        }
+
+        return new WP_REST_Response([
+            'success' => false,
+            'message' => 'Failed to approve domain',
+        ], 200);
+    }
+
+    /**
+     * Reject redirect
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function rejectRedirect(WP_REST_Request $request)
+    {
+        global $wpdb;
+        $redirectId = (int) $request->get_param('id');
+        $reason = sanitize_textarea_field($request->get_param('reason') ?? '');
+        $table = $wpdb->prefix . 'security_monitor_pending_redirects';
+
+        $updated = $wpdb->update(
+            $table,
+            [
+                'status' => 'rejected',
+                'reject_reason' => $reason,
+            ],
+            ['id' => $redirectId],
+            ['%s', '%s'],
+            ['%d']
+        );
+
+        if ($updated) {
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Domain rejected successfully',
+            ], 200);
+        }
+
+        return new WP_REST_Response([
+            'success' => false,
+            'message' => 'Failed to reject domain',
+        ], 200);
     }
 }
 

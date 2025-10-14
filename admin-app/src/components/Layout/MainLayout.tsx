@@ -42,6 +42,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       label: 'Security Status',
     },
     {
+      key: '/external-redirects',
+      icon: <SafetyOutlined />,
+      label: 'External Redirects',
+    },
+    {
       key: '/access-control',
       icon: <SafetyOutlined />,
       label: 'Access Control',
