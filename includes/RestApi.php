@@ -6,6 +6,7 @@ use WP_REST_Server;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_Error;
+use Puleeno\SecurityBot\WebMonitor\Security\CredentialManager;
 
 class RestApi extends WP_REST_Controller
 {
@@ -96,6 +97,15 @@ class RestApi extends WP_REST_Controller
             [
                 'methods' => WP_REST_Server::CREATABLE,
                 'callback' => [$this, 'updateSettings'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
+
+        // Test channel endpoints
+        register_rest_route($this->namespace, '/test-channel/(?P<channel>[a-z]+)', [
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'testChannel'],
                 'permission_callback' => [$this, 'checkPermissions'],
             ],
         ]);
@@ -276,18 +286,29 @@ class RestApi extends WP_REST_Controller
      */
     public function getSettings()
     {
+        // Load settings từ WordPress options và CredentialManager
         $settings = [
             'telegram' => [
-                'enabled' => get_option('wp_security_monitor_telegram_enabled', false),
+                'enabled' => (bool) get_option('wp_security_monitor_telegram_enabled', false),
+                'bot_token' => CredentialManager::getCredential(
+                    CredentialManager::TYPE_TELEGRAM_TOKEN
+                ) ?? '',
+                'chat_id' => CredentialManager::getCredential(
+                    CredentialManager::TYPE_TELEGRAM_CHAT_ID
+                ) ?? '',
             ],
             'email' => [
-                'enabled' => get_option('wp_security_monitor_email_enabled', false),
+                'enabled' => (bool) get_option('wp_security_monitor_email_enabled', false),
+                'to' => get_option('wp_security_monitor_email_to', ''),
             ],
             'slack' => [
-                'enabled' => get_option('wp_security_monitor_slack_enabled', false),
+                'enabled' => (bool) get_option('wp_security_monitor_slack_enabled', false),
+                'webhook_url' => CredentialManager::getCredential(
+                    CredentialManager::TYPE_SLACK_WEBHOOK
+                ) ?? '',
             ],
             'log' => [
-                'enabled' => true,
+                'enabled' => true, // Log always enabled
             ],
         ];
 
@@ -304,13 +325,233 @@ class RestApi extends WP_REST_Controller
     {
         $settings = $request->get_json_params();
 
-        // Update settings here
-        // ... implementation
+        // Update Telegram settings
+        if (isset($settings['telegram'])) {
+            update_option('wp_security_monitor_telegram_enabled', $settings['telegram']['enabled'] ?? false);
+
+            if (!empty($settings['telegram']['bot_token'])) {
+                CredentialManager::setCredential(
+                    CredentialManager::TYPE_TELEGRAM_TOKEN,
+                    sanitize_text_field($settings['telegram']['bot_token'])
+                );
+            }
+
+            if (!empty($settings['telegram']['chat_id'])) {
+                CredentialManager::setCredential(
+                    CredentialManager::TYPE_TELEGRAM_CHAT_ID,
+                    sanitize_text_field($settings['telegram']['chat_id'])
+                );
+            }
+        }
+
+        // Update Email settings
+        if (isset($settings['email'])) {
+            update_option('wp_security_monitor_email_enabled', $settings['email']['enabled'] ?? false);
+
+            if (!empty($settings['email']['to'])) {
+                update_option('wp_security_monitor_email_to', sanitize_email($settings['email']['to']));
+            }
+        }
+
+        // Update Slack settings
+        if (isset($settings['slack'])) {
+            update_option('wp_security_monitor_slack_enabled', $settings['slack']['enabled'] ?? false);
+
+            if (!empty($settings['slack']['webhook_url'])) {
+                CredentialManager::setCredential(
+                    CredentialManager::TYPE_SLACK_WEBHOOK,
+                    esc_url_raw($settings['slack']['webhook_url'])
+                );
+            }
+        }
 
         return new WP_REST_Response([
             'success' => true,
-            'message' => 'Settings updated',
+            'message' => 'Settings updated successfully',
         ], 200);
     }
+
+    /**
+     * Test channel connection
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response|WP_Error
+     */
+    public function testChannel(WP_REST_Request $request)
+    {
+        $channel = $request->get_param('channel');
+
+        if (!in_array($channel, ['telegram', 'email', 'slack'])) {
+            return new WP_Error('invalid_channel', 'Invalid channel type', ['status' => 400]);
+        }
+
+        try {
+            $result = $this->testChannelSendMessage($channel);
+
+            return new WP_REST_Response([
+                'success' => $result['success'],
+                'message' => $result['message'] ?? ($result['success'] ? 'Test thành công' : 'Test thất bại'),
+            ], 200);
+        } catch (\Exception $e) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'Test failed: ' . $e->getMessage(),
+            ], 200);
+        }
+    }
+
+    /**
+     * Test gửi tin nhắn test cho channel
+     *
+     * @param string $channelType
+     * @return array
+     */
+    private function testChannelSendMessage(string $channelType): array
+    {
+        switch ($channelType) {
+            case 'telegram':
+                return $this->testTelegramSendMessage();
+
+            case 'email':
+                return $this->testEmailSendMessage();
+
+            case 'slack':
+                return $this->testSlackSendMessage();
+
+            default:
+                return [
+                    'success' => false,
+                    'message' => 'Unknown channel type: ' . $channelType
+                ];
+        }
+    }
+
+    /**
+     * Test Telegram send message
+     */
+    private function testTelegramSendMessage(): array
+    {
+        $botToken = CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_TOKEN);
+        $chatId = CredentialManager::getCredential(CredentialManager::TYPE_TELEGRAM_CHAT_ID);
+        $enabled = get_option('wp_security_monitor_telegram_enabled', false);
+
+        if (empty($botToken) || empty($chatId)) {
+            return [
+                'success' => false,
+                'message' => 'Telegram config chưa đầy đủ. Vui lòng kiểm tra Bot Token và Chat ID.'
+            ];
+        }
+
+        if (!$enabled) {
+            return [
+                'success' => false,
+                'message' => 'Telegram channel chưa được bật. Vui lòng enable trước.'
+            ];
+        }
+
+        $config = [
+            'bot_token' => $botToken,
+            'chat_id' => $chatId
+        ];
+
+        $telegram = new \Puleeno\SecurityBot\WebMonitor\Channels\TelegramChannel();
+        $telegram->configure($config);
+
+        $testMessage = "🧪 *Test Message*\n\n";
+        $testMessage .= "Đây là tin nhắn test từ WP Security Monitor Bot\n";
+        $testMessage .= "Time: " . date('Y-m-d H:i:s') . "\n";
+        $testMessage .= "Status: ✅ Kết nối thành công!";
+
+        $result = $telegram->send($testMessage);
+
+        return [
+            'success' => $result,
+            'message' => $result ?
+                '✅ Tin nhắn test đã được gửi thành công! Kiểm tra Telegram.' :
+                '❌ Không thể gửi tin nhắn. Kiểm tra Bot Token và Chat ID.'
+        ];
+    }
+
+    /**
+     * Test Email send
+     */
+    private function testEmailSendMessage(): array
+    {
+        $to = get_option('wp_security_monitor_email_to', '');
+        $enabled = get_option('wp_security_monitor_email_enabled', false);
+
+        if (empty($to)) {
+            return [
+                'success' => false,
+                'message' => 'Email config chưa đầy đủ. Vui lòng nhập địa chỉ email.'
+            ];
+        }
+
+        if (!$enabled) {
+            return [
+                'success' => false,
+                'message' => 'Email channel chưa được bật.'
+            ];
+        }
+
+        $config = ['to' => $to];
+        $email = new \Puleeno\SecurityBot\WebMonitor\Channels\EmailChannel();
+        $email->configure($config);
+
+        $testMessage = "Test email từ WP Security Monitor Bot\n\n";
+        $testMessage .= "Time: " . date('Y-m-d H:i:s') . "\n";
+        $testMessage .= "Status: Kết nối thành công!";
+
+        $result = $email->send($testMessage);
+
+        return [
+            'success' => $result,
+            'message' => $result ?
+                '✅ Email test đã được gửi! Kiểm tra hộp thư.' :
+                '❌ Không thể gửi email. Kiểm tra SMTP configuration.'
+        ];
+    }
+
+    /**
+     * Test Slack send
+     */
+    private function testSlackSendMessage(): array
+    {
+        $webhookUrl = CredentialManager::getCredential(CredentialManager::TYPE_SLACK_WEBHOOK);
+        $enabled = get_option('wp_security_monitor_slack_enabled', false);
+
+        if (empty($webhookUrl)) {
+            return [
+                'success' => false,
+                'message' => 'Slack config chưa đầy đủ. Vui lòng nhập Webhook URL.'
+            ];
+        }
+
+        if (!$enabled) {
+            return [
+                'success' => false,
+                'message' => 'Slack channel chưa được bật.'
+            ];
+        }
+
+        $config = ['webhook_url' => $webhookUrl];
+        $slack = new \Puleeno\SecurityBot\WebMonitor\Channels\SlackChannel();
+        $slack->configure($config);
+
+        $testMessage = "🧪 *Test Message*\n\n";
+        $testMessage .= "Đây là tin nhắn test từ WP Security Monitor Bot\n";
+        $testMessage .= "Time: " . date('Y-m-d H:i:s') . "\n";
+        $testMessage .= "Status: ✅ Kết nối thành công!";
+
+        $result = $slack->send($testMessage);
+
+        return [
+            'success' => $result,
+            'message' => $result ?
+                '✅ Tin nhắn test đã được gửi đến Slack!' :
+                '❌ Không thể gửi tin nhắn. Kiểm tra Webhook URL.'
+        ];
+    }
 }
+
 

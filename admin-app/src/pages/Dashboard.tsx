@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, Row, Col, Statistic, Table, Tag, Space, Alert } from 'antd';
 import {
   WarningOutlined,
@@ -12,9 +12,11 @@ import { fetchStats } from '../reducers/statsReducer';
 import { fetchIssues } from '../reducers/issuesReducer';
 import type { Issue } from '../types';
 import { getIssuerName } from '../utils/issuerNames';
+import PageLoading from '../components/Loading/PageLoading';
 
 const Dashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const { security, bot, loading } = useSelector((state: RootState) => state.stats);
   const { items: recentIssues } = useSelector((state: RootState) => state.issues);
@@ -23,6 +25,12 @@ const Dashboard: React.FC = () => {
     dispatch(fetchStats());
     dispatch(fetchIssues({ page: 1, filters: {} }));
   }, [dispatch]);
+
+  useEffect(() => {
+    if (security && bot) {
+      setInitialLoading(false);
+    }
+  }, [security, bot]);
 
   const getSeverityColor = (severity: string): string => {
     const colors: Record<string, string> = {
@@ -33,6 +41,10 @@ const Dashboard: React.FC = () => {
     };
     return colors[severity] || 'default';
   };
+
+  if (initialLoading) {
+    return <PageLoading message="Đang tải dashboard..." />;
+  }
 
   const columns = [
     {

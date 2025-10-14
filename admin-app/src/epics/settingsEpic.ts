@@ -42,9 +42,9 @@ const updateSettingsEpic: Epic = (action$) =>
         headers: getApiHeaders(),
         body: action.payload,
       }).pipe(
-        mergeMap((response) =>
+        mergeMap(() =>
           of(
-            updateSettingsSuccess(response.response as any),
+            updateSettingsSuccess(action.payload),
             addNotification({
               type: 'success',
               message: 'Settings đã được lưu thành công',

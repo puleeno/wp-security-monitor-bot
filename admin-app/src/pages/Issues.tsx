@@ -20,6 +20,7 @@ import {
 } from '../reducers/issuesReducer';
 import type { Issue } from '../types';
 import { getIssuerName } from '../utils/issuerNames';
+import PageLoading from '../components/Loading/PageLoading';
 
 const { TextArea } = Input;
 const { Title, Text } = Typography;
@@ -37,10 +38,17 @@ const Issues: React.FC = () => {
   const [resolveModal, setResolveModal] = useState(false);
   const [ignoreReason, setIgnoreReason] = useState('');
   const [resolutionNotes, setResolutionNotes] = useState('');
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
     dispatch(fetchIssues({ page: currentPage, filters }));
   }, [dispatch, currentPage, filters]);
+
+  useEffect(() => {
+    if (!loading && items) {
+      setInitialLoading(false);
+    }
+  }, [loading, items]);
 
   const getSeverityColor = (severity: string): string => {
     const colors: Record<string, string> = {
@@ -51,6 +59,10 @@ const Issues: React.FC = () => {
     };
     return colors[severity] || 'default';
   };
+
+  if (initialLoading) {
+    return <PageLoading message="Đang tải issues..." />;
+  }
 
   const getStatusColor = (status: string): string => {
     const colors: Record<string, string> = {
