@@ -121,6 +121,9 @@ class Bot extends MonitorAbstract
         // Hook for database schema
         add_action('init', [$this, 'checkDatabaseSchema']);
 
+        // Register REST API routes
+        add_action('rest_api_init', [$this, 'registerRestRoutes']);
+
         // Hook cho AJAX
         add_action('wp_ajax_security_monitor_test_channel', [$this, 'ajaxTestChannel']);
         add_action('wp_ajax_security_monitor_test_send_message', [$this, 'ajaxTestSendMessage']);
@@ -613,6 +616,16 @@ class Bot extends MonitorAbstract
             [$this, 'renderAdminPage']
         );
 
+        // React Admin App - New UI
+        add_submenu_page(
+            'puleeno-security',
+            'React Admin (New UI)',
+            '<span style="color: #00a32a;">🚀 New UI</span>',
+            'manage_options',
+            'wp-security-monitor-react-app',
+            [$this, 'renderReactApp']
+        );
+
         // Migration page - chỉ hiển thị khi cần migration
         $dbVersion = get_option('wp_security_monitor_db_version', '0');
         if (version_compare($dbVersion, '1.2', '<')) {
@@ -689,6 +702,27 @@ class Bot extends MonitorAbstract
     public function renderMigrationPage(): void
     {
         include dirname(__FILE__) . '/../admin/migration-page.php';
+    }
+
+    /**
+     * Render React admin app
+     *
+     * @return void
+     */
+    public function renderReactApp(): void
+    {
+        include dirname(__FILE__) . '/../admin/react-app.php';
+    }
+
+    /**
+     * Register REST API routes
+     *
+     * @return void
+     */
+    public function registerRestRoutes(): void
+    {
+        $restApi = new RestApi();
+        $restApi->registerRoutes();
     }
 
     /**

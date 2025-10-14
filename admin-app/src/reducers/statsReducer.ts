@@ -1,0 +1,40 @@
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import type { SecurityStats, BotStats } from '../types';
+
+interface StatsState {
+  security: SecurityStats | null;
+  bot: BotStats | null;
+  loading: boolean;
+  error: string | null;
+}
+
+const initialState: StatsState = {
+  security: null,
+  bot: null,
+  loading: false,
+  error: null,
+};
+
+const statsSlice = createSlice({
+  name: 'stats',
+  initialState,
+  reducers: {
+    fetchStats: (state) => {
+      state.loading = true;
+      state.error = null;
+    },
+    fetchStatsSuccess: (state, action: PayloadAction<{ security: SecurityStats; bot: BotStats }>) => {
+      state.security = action.payload.security;
+      state.bot = action.payload.bot;
+      state.loading = false;
+    },
+    fetchStatsFailure: (state, action: PayloadAction<string>) => {
+      state.loading = false;
+      state.error = action.payload;
+    },
+  },
+});
+
+export const { fetchStats, fetchStatsSuccess, fetchStatsFailure } = statsSlice.actions;
+export default statsSlice.reducer;
+
