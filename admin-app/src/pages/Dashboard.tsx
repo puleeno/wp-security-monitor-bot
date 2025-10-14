@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Row, Col, Statistic, Table, Tag, Space, Alert } from 'antd';
+import { Card, Row, Col, Statistic, Table, Tag, Space, Alert, Descriptions, Typography } from 'antd';
 import {
   WarningOutlined,
   CheckCircleOutlined,
@@ -10,9 +10,12 @@ import { useDispatch, useSelector } from 'react-redux';
 import type { RootState, AppDispatch } from '../store';
 import { fetchStats } from '../reducers/statsReducer';
 import { fetchIssues } from '../reducers/issuesReducer';
+import { fetchSettings } from '../reducers/settingsReducer';
 import type { Issue } from '../types';
 import { getIssuerName } from '../utils/issuerNames';
 import PageLoading from '../components/Loading/PageLoading';
+
+const { Text } = Typography;
 
 const Dashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -20,17 +23,19 @@ const Dashboard: React.FC = () => {
 
   const { security, bot, loading } = useSelector((state: RootState) => state.stats);
   const { items: recentIssues } = useSelector((state: RootState) => state.issues);
+  const { telegram, email, slack, log } = useSelector((state: RootState) => state.settings);
 
   useEffect(() => {
     dispatch(fetchStats());
     dispatch(fetchIssues({ page: 1, filters: {} }));
+    dispatch(fetchSettings());
   }, [dispatch]);
 
   useEffect(() => {
-    if (security && bot) {
+    if (security && bot && telegram) {
       setInitialLoading(false);
     }
-  }, [security, bot]);
+  }, [security, bot, telegram]);
 
   const getSeverityColor = (severity: string): string => {
     const colors: Record<string, string> = {
@@ -89,7 +94,7 @@ const Dashboard: React.FC = () => {
 
       {/* Quick Stats */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} md={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="Tổng Issues"
@@ -99,7 +104,7 @@ const Dashboard: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="Issues Mới"
@@ -109,7 +114,7 @@ const Dashboard: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="Đã Resolved"
@@ -119,7 +124,7 @@ const Dashboard: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="Monitors"
@@ -127,6 +132,116 @@ const Dashboard: React.FC = () => {
               prefix={<ClockCircleOutlined />}
               valueStyle={{ color: '#2271b1' }}
             />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Channels & Bot Info */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} md={12}>
+          <Card title="📡 Notification Channels">
+            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Space>
+                  <span style={{ fontSize: 32 }}>📱</span>
+                  <div>
+                    <div><Text strong>Telegram</Text></div>
+                    <Text type="secondary" style={{ fontSize: 12 }}>Instant messaging</Text>
+                  </div>
+                </Space>
+                {telegram?.enabled ? (
+                  <Tag color="green" icon={<CheckCircleOutlined />}>Active</Tag>
+                ) : (
+                  <Tag color="default">Inactive</Tag>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Space>
+                  <span style={{ fontSize: 32 }}>📧</span>
+                  <div>
+                    <div><Text strong>Email</Text></div>
+                    <Text type="secondary" style={{ fontSize: 12 }}>Email notifications</Text>
+                  </div>
+                </Space>
+                {email?.enabled ? (
+                  <Tag color="green" icon={<CheckCircleOutlined />}>Active</Tag>
+                ) : (
+                  <Tag color="default">Inactive</Tag>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Space>
+                  <span style={{ fontSize: 32 }}>💬</span>
+                  <div>
+                    <div><Text strong>Slack</Text></div>
+                    <Text type="secondary" style={{ fontSize: 12 }}>Team collaboration</Text>
+                  </div>
+                </Space>
+                {slack?.enabled ? (
+                  <Tag color="green" icon={<CheckCircleOutlined />}>Active</Tag>
+                ) : (
+                  <Tag color="default">Inactive</Tag>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Space>
+                  <span style={{ fontSize: 32 }}>📝</span>
+                  <div>
+                    <div><Text strong>Log</Text></div>
+                    <Text type="secondary" style={{ fontSize: 12 }}>File logging</Text>
+                  </div>
+                </Space>
+                {log?.enabled ? (
+                  <Tag color="green" icon={<CheckCircleOutlined />}>Active</Tag>
+                ) : (
+                  <Tag color="default">Inactive</Tag>
+                )}
+              </div>
+
+              <div style={{
+                marginTop: 16,
+                padding: '12px',
+                background: '#f0f6fc',
+                borderRadius: '4px',
+                textAlign: 'center'
+              }}>
+                <Text strong style={{ fontSize: 18 }}>
+                  {bot?.channels_count || 0}
+                </Text>
+                <Text type="secondary" style={{ marginLeft: 8 }}>
+                  / 4 channels active
+                </Text>
+              </div>
+            </Space>
+          </Card>
+        </Col>
+
+        <Col xs={24} md={12}>
+          <Card title="⏰ Bot Schedule">
+            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+              <Descriptions column={1} size="small" bordered>
+                <Descriptions.Item label="Last Check">
+                  {bot?.last_check ? (
+                    <Text>{new Date(bot.last_check * 1000).toLocaleString('vi-VN')}</Text>
+                  ) : (
+                    <Text type="secondary">Chưa có</Text>
+                  )}
+                </Descriptions.Item>
+                <Descriptions.Item label="Next Check">
+                  {bot?.next_scheduled_check ? (
+                    <Text>{new Date(bot.next_scheduled_check * 1000).toLocaleString('vi-VN')}</Text>
+                  ) : (
+                    <Text type="secondary">Chưa lên lịch</Text>
+                  )}
+                </Descriptions.Item>
+                <Descriptions.Item label="Total Checked">
+                  <Tag color="blue">{bot?.total_issues_found || 0} issues found</Tag>
+                </Descriptions.Item>
+              </Descriptions>
+            </Space>
           </Card>
         </Col>
       </Row>
