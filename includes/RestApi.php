@@ -109,6 +109,23 @@ class RestApi extends WP_REST_Controller
                 'permission_callback' => [$this, 'checkPermissions'],
             ],
         ]);
+
+        // Migration endpoints
+        register_rest_route($this->namespace, '/migration/status', [
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [$this, 'getMigrationStatus'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
+
+        register_rest_route($this->namespace, '/migration/run', [
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'runMigration'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
     }
 
     /**
@@ -551,6 +568,58 @@ class RestApi extends WP_REST_Controller
                 '✅ Tin nhắn test đã được gửi đến Slack!' :
                 '❌ Không thể gửi tin nhắn. Kiểm tra Webhook URL.'
         ];
+    }
+
+    /**
+     * Get migration status
+     *
+     * @return WP_REST_Response
+     */
+    public function getMigrationStatus()
+    {
+        $currentVersion = get_option('wp_security_monitor_db_version', '0');
+        $latestVersion = '1.2';
+        $lastUpdated = get_option('wp_security_monitor_db_updated_at', null);
+
+        $status = [
+            'current_version' => $currentVersion,
+            'latest_version' => $latestVersion,
+            'needs_migration' => version_compare($currentVersion, $latestVersion, '<'),
+            'last_updated' => $lastUpdated,
+        ];
+
+        return new WP_REST_Response($status, 200);
+    }
+
+    /**
+     * Run migration
+     *
+     * @return WP_REST_Response
+     */
+    public function runMigration()
+    {
+        try {
+            $schema = new \Puleeno\SecurityBot\WebMonitor\Database\Schema();
+            $result = $schema->updateSchema();
+
+            if ($result) {
+                return new WP_REST_Response([
+                    'success' => true,
+                    'message' => 'Migration completed successfully!',
+                    'new_version' => '1.2',
+                ], 200);
+            }
+
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'Migration failed. Check error logs.',
+            ], 200);
+        } catch (\Exception $e) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'Migration error: ' . $e->getMessage(),
+            ], 200);
+        }
     }
 }
 
