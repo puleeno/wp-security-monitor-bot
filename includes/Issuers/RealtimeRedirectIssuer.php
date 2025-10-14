@@ -276,15 +276,23 @@ class RealtimeRedirectIssuer implements RealtimeIssuerInterface
         $urlHost = parse_url($url, PHP_URL_HOST);
 
         if ($urlHost && $urlHost !== $siteHost) {
-            // Check whitelist
-            $whitelist = get_option('wp_security_monitor_whitelist_domains', []);
-            if (in_array($urlHost, $whitelist)) {
-                return false;
+            // Check whitelist trong database table
+            global $wpdb;
+            $table = $wpdb->prefix . 'security_monitor_redirect_domains';
+
+            $approved = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM $table WHERE domain = %s AND status = 'approved'",
+                $urlHost
+            ));
+
+            if ($approved > 0) {
+                return false; // Domain đã approved (trong whitelist)
             }
-            return true;
+
+            return true; // External URL chưa approved
         }
 
-        return false;
+        return false; // Internal URL
     }
 
     /**
@@ -343,11 +351,217 @@ class RealtimeRedirectIssuer implements RealtimeIssuerInterface
         debug_print_backtrace();
         $redirect['backtrace'] = ob_get_clean();
 
-        // Trigger action immediately
-        do_action('wp_security_monitor_suspicious_redirect', [
-            'details' => $redirect,
-            'message' => 'Suspicious redirect detected in realtime'
-        ]);
+        // Track domain vào database
+        $domainStatus = $this->trackDomainToDatabase($location, $redirect);
+
+        // Chỉ trigger action khi:
+        // 1. Domain chưa được approve (không trong whitelist)
+        // 2. Chưa có issue với cùng domain + backtrace
+        if ($domainStatus['status'] !== 'approved' && $this->shouldCreateIssue($location, $redirect['backtrace'])) {
+            do_action('wp_security_monitor_suspicious_redirect', [
+                'details' => $redirect,
+                'message' => 'Suspicious redirect detected in realtime'
+            ]);
+        }
+    }
+
+    /**
+     * Track domain to database table
+     *
+     * @return array Domain info with status
+     */
+    private function trackDomainToDatabase($url, $context): array
+    {
+        global $wpdb;
+
+        // Extract domain from URL
+        $parsedUrl = parse_url($url);
+        if (!isset($parsedUrl['host'])) {
+            return ['status' => 'unknown', 'is_new' => false];
+        }
+
+        $domain = $parsedUrl['host'];
+        $table = $wpdb->prefix . 'security_monitor_redirect_domains';
+
+        // Check if domain already exists
+        $existing = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $table WHERE domain = %s",
+            $domain
+        ));
+
+        $contextData = [
+            'source' => 'realtime_redirect',
+            'redirect_url' => $url,
+            'from_url' => $context['from_url'] ?? '',
+            'user_agent' => $context['user_agent'] ?? '',
+            'ip_address' => $context['ip_address'] ?? '',
+            'timestamp' => $context['timestamp'] ?? current_time('mysql')
+        ];
+
+        if ($existing) {
+            // Domain đã tồn tại - chỉ update detection count
+            $existingContexts = json_decode($existing->contexts, true) ?: [];
+            $existingContexts[] = $contextData;
+
+            // Keep only last 50 contexts
+            if (count($existingContexts) > 50) {
+                $existingContexts = array_slice($existingContexts, -50);
+            }
+
+            $wpdb->update(
+                $table,
+                [
+                    'detection_count' => $existing->detection_count + 1,
+                    'contexts' => json_encode($existingContexts),
+                    'last_used' => current_time('mysql'),
+                    'usage_count' => $existing->usage_count + 1
+                ],
+                ['domain' => $domain],
+                ['%d', '%s', '%s', '%d'],
+                ['%s']
+            );
+
+            return [
+                'status' => $existing->status,
+                'is_new' => false,
+                'domain' => $domain
+            ];
+        } else {
+            // Domain mới - insert vào database
+            $wpdb->insert(
+                $table,
+                [
+                    'domain' => $domain,
+                    'first_detected' => current_time('mysql'),
+                    'detection_count' => 1,
+                    'status' => 'pending',
+                    'contexts' => json_encode([$contextData]),
+                    'usage_count' => 1,
+                    'last_used' => current_time('mysql')
+                ],
+                ['%s', '%s', '%d', '%s', '%s', '%d', '%s']
+            );
+
+            return [
+                'status' => 'pending',
+                'is_new' => true,
+                'domain' => $domain
+            ];
+        }
+    }
+
+    /**
+     * Check if should create issue based on domain + backtrace
+     *
+     * Logic:
+     * - Nếu chưa có issue với cùng domain + line code → TẠO issue mới
+     * - Nếu đã có issue:
+     *   + Chưa xử lý (status='new' và viewed=0) → KHÔNG tạo (tránh spam)
+     *   + Đã xử lý (viewed=1 hoặc resolved/ignored) → TẠO issue mới (báo lại)
+     *
+     * @param string $url Redirect URL
+     * @param string $backtrace Backtrace string
+     * @return bool True if should create issue, false if duplicate
+     */
+    private function shouldCreateIssue($url, $backtrace): bool
+    {
+        global $wpdb;
+
+        // Extract domain from URL
+        $parsedUrl = parse_url($url);
+        if (!isset($parsedUrl['host'])) {
+            return false;
+        }
+
+        $domain = $parsedUrl['host'];
+
+        // Extract relevant line from backtrace (first meaningful line)
+        $backtraceHash = $this->getBacktraceHash($backtrace);
+
+        if (empty($backtraceHash)) {
+            return true; // Không có backtrace hash → tạo issue
+        }
+
+        // Check if issue already exists with same domain and similar backtrace
+        $issuesTable = $wpdb->prefix . 'security_monitor_issues';
+
+        // Search for existing issue with same domain + backtrace
+        $existingIssue = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, status, viewed, viewed_at, resolved_at, ignored_at, backtrace
+             FROM $issuesTable
+             WHERE issuer = %s
+             AND metadata LIKE %s
+             AND backtrace LIKE %s
+             ORDER BY created_at DESC
+             LIMIT 1",
+            'Realtime Redirect Monitor',
+            '%' . $wpdb->esc_like($domain) . '%',
+            '%' . $wpdb->esc_like($backtraceHash) . '%'
+        ));
+
+        // Debug logging
+        if (WP_DEBUG) {
+            error_log('[Redirect Anti-Spam] Domain: ' . $domain);
+            error_log('[Redirect Anti-Spam] Backtrace Hash: ' . $backtraceHash);
+            error_log('[Redirect Anti-Spam] Existing Issue: ' . ($existingIssue ? $existingIssue->id : 'NONE'));
+            if ($existingIssue) {
+                error_log('[Redirect Anti-Spam] Issue Status: ' . $existingIssue->status . ', Viewed: ' . $existingIssue->viewed);
+            }
+        }
+
+        // Nếu không có issue nào → tạo mới
+        if ($existingIssue === null) {
+            if (WP_DEBUG) {
+                error_log('[Redirect Anti-Spam] Decision: CREATE (no existing issue)');
+            }
+            return true;
+        }
+
+        // Nếu có issue rồi → kiểm tra đã xử lý chưa
+        $isProcessed = (
+            $existingIssue->viewed == 1 || // Đã xem
+            $existingIssue->status === 'resolved' || // Đã resolve
+            $existingIssue->status === 'ignored' || // Đã ignore
+            !empty($existingIssue->viewed_at) ||
+            !empty($existingIssue->resolved_at) ||
+            !empty($existingIssue->ignored_at)
+        );
+
+        if (WP_DEBUG) {
+            error_log('[Redirect Anti-Spam] Is Processed: ' . ($isProcessed ? 'YES' : 'NO'));
+            error_log('[Redirect Anti-Spam] Decision: ' . ($isProcessed ? 'CREATE (re-notify)' : 'SKIP (duplicate)'));
+        }
+
+        // Nếu đã xử lý → tạo issue mới để báo lại
+        // Nếu chưa xử lý → không tạo (tránh spam)
+        return $isProcessed;
+    }
+
+    /**
+     * Get hash/signature from backtrace to identify unique code location
+     *
+     * @param string $backtrace Full backtrace
+     * @return string Backtrace signature
+     */
+    private function getBacktraceHash($backtrace): string
+    {
+        // Extract first meaningful line (ignore internal redirect calls)
+        $lines = explode("\n", $backtrace);
+
+        foreach ($lines as $line) {
+            // Skip internal security monitor and WordPress core redirects
+            if (stripos($line, 'RealtimeRedirectIssuer') !== false) continue;
+            if (stripos($line, 'wp_redirect') !== false) continue;
+            if (stripos($line, 'wp-includes') !== false) continue;
+
+            // Find theme or plugin file line
+            if (preg_match('#(wp-content/(?:themes|plugins)/[^:]+):(\d+)#', $line, $matches)) {
+                return $matches[1] . ':' . $matches[2]; // file:line
+            }
+        }
+
+        // Fallback to first line
+        return substr($backtrace, 0, 200);
     }
 
     /**

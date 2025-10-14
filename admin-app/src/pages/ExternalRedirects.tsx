@@ -78,7 +78,7 @@ const ExternalRedirects: React.FC = () => {
       console.error('❌ Failed to load redirects:', error);
       dispatch(addNotification({
         type: 'error',
-        message: `Lỗi load redirects: ${error.message}`,
+        message: `Lỗi load domains: ${error.message}`,
       }));
     } finally {
       setLoading(false);
@@ -157,7 +157,7 @@ const ExternalRedirects: React.FC = () => {
   };
 
   if (loading) {
-    return <PageLoading message="Đang tải pending redirects..." />;
+    return <PageLoading message="Đang tải domains..." />;
   }
 
   const getStatusColor = (status: string): string => {
@@ -278,8 +278,8 @@ const ExternalRedirects: React.FC = () => {
 
       {activeTab === 'pending' && pendingCount > 0 && (
         <Alert
-          message={`⚠️ Có ${pendingCount} external redirect(s) đang chờ review`}
-          description="Kiểm tra và approve/reject các domain redirect để bảo vệ website khỏi phishing và malware."
+          message={`⚠️ Có ${pendingCount} domain(s) đang chờ review`}
+          description="Kiểm tra và approve/reject các domain để bảo vệ website khỏi phishing và malware."
           type="warning"
           showIcon
           style={{ marginBottom: 24 }}
@@ -326,7 +326,7 @@ const ExternalRedirects: React.FC = () => {
           <Alert
             message={
               activeTab === 'pending'
-                ? '✅ Không có pending redirects'
+                ? '✅ Không có pending domains'
                 : activeTab === 'approved'
                 ? 'Chưa có domain nào được approve'
                 : 'Chưa có domain nào bị reject'
