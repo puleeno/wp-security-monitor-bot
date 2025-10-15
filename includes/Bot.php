@@ -590,8 +590,8 @@ class Bot extends MonitorAbstract
         // Logs submenu - PHP viewer for debug logs
         add_submenu_page(
             'puleeno-security',
-            'Debug Logs',
-            'Logs',
+            'Security Logs',
+            'Security Logs',
             'manage_options',
             'wp-security-monitor-logs',
             [$this, 'renderLogsPage']
