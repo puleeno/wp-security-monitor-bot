@@ -58,22 +58,14 @@ const ExternalRedirects: React.FC = () => {
       const queryParam = status ? `?status=${status}` : '';
       const url = buildUrl(`wp-security-monitor/v1/redirects${queryParam}`);
 
-      console.log('🔍 Loading redirects:', { status, url });
-
       const response = await ajax({
         url,
         method: 'GET',
         headers: getApiHeaders(),
       }).toPromise();
 
-      console.log('📡 API Response:', response);
-
       const data = response?.response as any;
-      console.log('📊 Parsed data:', data);
-
       setRedirects(data?.redirects || []);
-
-      console.log('✅ Redirects loaded:', data?.redirects?.length || 0);
     } catch (error: any) {
       console.error('❌ Failed to load redirects:', error);
       dispatch(addNotification({

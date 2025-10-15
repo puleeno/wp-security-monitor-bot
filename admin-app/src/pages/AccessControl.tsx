@@ -62,20 +62,18 @@ const AccessControl: React.FC = () => {
   };
 
   const handleSaveIPRule = () => {
-    ipForm.validateFields().then((values) => {
-      console.log('Adding IP rule:', { ...values, type: ipModalType });
+    ipForm.validateFields().then(() => {
       // TODO: Call API
       setIpModalVisible(false);
       ipForm.resetFields();
     });
   };
 
-  const handleDeleteIPRule = (id: number) => {
+  const handleDeleteIPRule = (_id: number) => {
     Modal.confirm({
       title: 'Xác nhận xóa',
       content: 'Bạn có chắc muốn xóa IP rule này?',
       onOk: () => {
-        console.log('Deleting IP rule:', id);
         // TODO: Call API
       },
     });
@@ -191,7 +189,7 @@ const AccessControl: React.FC = () => {
                 placeholder="Tìm theo username hoặc IP..."
                 allowClear
                 style={{ width: 300 }}
-                onSearch={(value) => console.log('Search:', value)}
+                onSearch={() => {/* TODO: Implement search */}}
               />
             </div>
 

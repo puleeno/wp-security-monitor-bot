@@ -170,8 +170,6 @@ const Settings: React.FC = () => {
               <Form.Item noStyle shouldUpdate>
                 {() => {
                   const enabled = form.getFieldValue('telegram_enabled');
-                  console.log('🔍 Checking telegram_enabled state:', enabled);
-                  console.log('🎯 Bot token field should be:', enabled ? 'ENABLED' : 'DISABLED');
                   return (
                     <>
                       <Row gutter={16}>
@@ -266,7 +264,6 @@ const Settings: React.FC = () => {
               <Form.Item noStyle shouldUpdate>
                 {() => {
                   const enabled = form.getFieldValue('email_enabled');
-                  console.log('🔍 Checking email_enabled state:', enabled);
                   return (
                     <>
                       <Form.Item
@@ -333,7 +330,6 @@ const Settings: React.FC = () => {
               <Form.Item noStyle shouldUpdate>
                 {() => {
                   const enabled = form.getFieldValue('slack_enabled');
-                  console.log('🔍 Checking slack_enabled state:', enabled);
                   return (
                     <>
                       <Form.Item
