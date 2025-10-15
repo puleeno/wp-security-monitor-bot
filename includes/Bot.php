@@ -2,9 +2,11 @@
 namespace Puleeno\SecurityBot\WebMonitor;
 
 use Puleeno\SecurityBot\WebMonitor\Abstracts\MonitorAbstract;
+use Puleeno\SecurityBot\WebMonitor\Admin\AdminMenuManager;
 use Puleeno\SecurityBot\WebMonitor\Channels\TelegramChannel;
 use Puleeno\SecurityBot\WebMonitor\Interfaces\ChannelInterface;
 use Puleeno\SecurityBot\WebMonitor\Interfaces\IssuerInterface;
+use Puleeno\SecurityBot\WebMonitor\Issuers\IssuerRegistry;
 use Puleeno\SecurityBot\WebMonitor\Channels\EmailChannel;
 use Puleeno\SecurityBot\WebMonitor\Channels\SlackChannel;
 use Puleeno\SecurityBot\WebMonitor\Channels\LogChannel;
@@ -39,8 +41,22 @@ class Bot extends MonitorAbstract
      */
     private $issueManager;
 
+    /**
+     * @var AdminMenuManager
+     */
+    private $menuManager;
+
+    /**
+     * @var IssuerRegistry
+     */
+    private $issuerRegistry;
+
     protected function __construct()
     {
+        // Initialize managers
+        $this->menuManager = new AdminMenuManager();
+        $this->issuerRegistry = new IssuerRegistry();
+
         $this->initializeHooks();
         $this->loadConfiguration();
         // Khởi tạo channels và issuers ngay lập tức để các hooks được đăng ký
@@ -565,59 +581,10 @@ class Bot extends MonitorAbstract
      */
             public function addAdminMenu(): void
     {
-        // Main menu - Puleeno Security
-        // Main menu - Load React UI directly
-        $menuSlug = add_menu_page(
-            'Puleeno Security',           // Page title
-            'Puleeno Security',           // Menu title
-            'read',                       // Capability
-            'puleeno-security',           // Menu slug
-            [$this, 'renderMainSecurityPage'], // Callback - React UI
-            'dashicons-shield-alt',       // Icon
-            30                           // Position
-        );
-
-        // Dashboard submenu (same as parent - WordPress convention)
-        add_submenu_page(
-            'puleeno-security',
-            'Dashboard',
-            'Dashboard',
-            'read',
-            'puleeno-security',
-            [$this, 'renderMainSecurityPage']
-        );
-
-        // Logs submenu - PHP viewer for debug logs
-        add_submenu_page(
-            'puleeno-security',
-            'Security Logs',
-            'Security Logs',
-            'manage_options',
-            'wp-security-monitor-logs',
-            [$this, 'renderLogsPage']
-        );
+        // Delegate to AdminMenuManager
+        $this->menuManager->addMenus();
     }
 
-    /**
-     * Render main security page with React UI
-     *
-     * @return void
-     */
-    public function renderMainSecurityPage(): void
-    {
-        // Load React app as main dashboard
-        include dirname(__FILE__) . '/../admin/react-app.php';
-    }
-
-    /**
-     * Render logs viewer page (PHP)
-     *
-     * @return void
-     */
-    public function renderLogsPage(): void
-    {
-        include dirname(__FILE__) . '/../admin/logs-page.php';
-    }
 
     /**
      * Register REST API routes
