@@ -566,152 +566,57 @@ class Bot extends MonitorAbstract
             public function addAdminMenu(): void
     {
         // Main menu - Puleeno Security
+        // Main menu - Load React UI directly
         $menuSlug = add_menu_page(
             'Puleeno Security',           // Page title
             'Puleeno Security',           // Menu title
             'read',                       // Capability
             'puleeno-security',           // Menu slug
-            [$this, 'renderMainSecurityPage'], // Callback
+            [$this, 'renderMainSecurityPage'], // Callback - React UI
             'dashicons-shield-alt',       // Icon
             30                           // Position
         );
 
-                // Security Issues - submenu
+        // Dashboard submenu (same as parent - WordPress convention)
         add_submenu_page(
             'puleeno-security',
-            'Security Issues',
-            'Issues',
-            AccessControl::CAP_VIEW_ISSUES,
-            'wp-security-monitor-issues',
-            [$this, 'renderIssuesPage']
+            'Dashboard',
+            'Dashboard',
+            'read',
+            'puleeno-security',
+            [$this, 'renderMainSecurityPage']
         );
 
-        // Security Status - submenu
+        // Logs submenu - PHP viewer for debug logs
         add_submenu_page(
             'puleeno-security',
-            'Security Status',
-            'Status',
-            AccessControl::CAP_VIEW_SECURITY_STATUS,
-            'wp-security-monitor-security',
-            [$this, 'renderSecurityPage']
-        );
-
-        // Access Control - submenu
-        add_submenu_page(
-            'puleeno-security',
-            'Access Control',
-            'Access Control',
-            'read', // Basic permission, then check specific caps inside
-            'wp-security-monitor-access-control',
-            [$this, 'renderAccessControlPage']
-        );
-
-        // Security Monitor Settings - submenu (moved to bottom)
-        add_submenu_page(
-            'puleeno-security',
-            'Security Monitor Settings',
-            'Settings',
-            AccessControl::CAP_MANAGE_SETTINGS,
-            'wp-security-monitor-bot',
-            [$this, 'renderAdminPage']
-        );
-
-        // React Admin App - New UI
-        add_submenu_page(
-            'puleeno-security',
-            'React Admin (New UI)',
-            '<span style="color: #00a32a;">🚀 New UI</span>',
+            'Debug Logs',
+            'Logs',
             'manage_options',
-            'wp-security-monitor-react-app',
-            [$this, 'renderReactApp']
+            'wp-security-monitor-logs',
+            [$this, 'renderLogsPage']
         );
-
-        // Migration page - chỉ hiển thị khi cần migration
-        $dbVersion = get_option('wp_security_monitor_db_version', '0');
-        if (version_compare($dbVersion, '1.2', '<')) {
-            add_submenu_page(
-                'puleeno-security',
-                'Database Migration',
-                '<span style="color: #d63638;">⚠️ Migration</span>',
-                'manage_options',
-                'wp-security-monitor-migration',
-                [$this, 'renderMigrationPage']
-            );
-        }
-    }
-
-        /**
-     * Render admin page
-     *
-     * @return void
-     */
-    public function renderAdminPage(): void
-    {
-        $isRunning = $this->isRunning();
-        $lastCheck = get_option('wp_security_monitor_last_check', 0);
-        $lastIssues = get_option('wp_security_monitor_last_issues', []);
-
-        include dirname(__FILE__) . '/../admin/settings-page.php';
     }
 
     /**
-     * Render issues management page
-     *
-     * @return void
-     */
-    public function renderIssuesPage(): void
-    {
-        include dirname(__FILE__) . '/../admin/issues-page.php';
-    }
-
-    /**
-     * Render security status page
-     *
-     * @return void
-     */
-    public function renderSecurityPage(): void
-    {
-        include dirname(__FILE__) . '/../admin/security-page.php';
-    }
-
-    /**
-     * Render access control page
-     *
-     * @return void
-     */
-    public function renderAccessControlPage(): void
-    {
-        include dirname(__FILE__) . '/../admin/access-control-page.php';
-    }
-
-    /**
-     * Render main security dashboard page
+     * Render main security page with React UI
      *
      * @return void
      */
     public function renderMainSecurityPage(): void
     {
-        include dirname(__FILE__) . '/../admin/main-security-page.php';
-    }
-
-    /**
-     * Render migration page
-     *
-     * @return void
-     */
-    public function renderMigrationPage(): void
-    {
-        include dirname(__FILE__) . '/../admin/migration-page.php';
-    }
-
-    /**
-     * Render React admin app
-     *
-     * @return void
-     */
-    public function renderReactApp(): void
-    {
+        // Load React app as main dashboard
         include dirname(__FILE__) . '/../admin/react-app.php';
+    }
+
+    /**
+     * Render logs viewer page (PHP)
+     *
+     * @return void
+     */
+    public function renderLogsPage(): void
+    {
+        include dirname(__FILE__) . '/../admin/logs-page.php';
     }
 
     /**
