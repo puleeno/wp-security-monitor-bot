@@ -27,6 +27,7 @@ if ($isDevelopment) {
             root: '<?php echo esc_url_raw(rest_url()); ?>',
             nonce: '<?php echo wp_create_nonce('wp_rest'); ?>'
         };
+        window.wpSecurityMonitorLocale = '<?php echo get_locale(); ?>';
     </script>
     <?php
 } else {
@@ -80,6 +81,12 @@ if ($isDevelopment) {
         'root' => esc_url_raw(rest_url()),
         'nonce' => wp_create_nonce('wp_rest'),
     ]);
+
+    // Pass locale for i18n
+    wp_add_inline_script('wp-security-monitor-js-0',
+        'window.wpSecurityMonitorLocale = "' . get_locale() . '";',
+        'before'
+    );
 }
 
 ?>

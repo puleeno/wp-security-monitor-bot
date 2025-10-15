@@ -1,0 +1,12 @@
+{
+  "dashboard": {"title": "Dashboard", "securityOverview": "Sicherheitsübersicht", "statistics": "Statistiken", "notificationChannels": "Benachrichtigungskanäle", "botSchedule": "Bot-Zeitplan", "recentIssues": "Aktuelle Probleme"},
+  "issues": {"title": "Sicherheitsprobleme", "totalIssues": "Gesamt {{count}} Probleme", "markViewed": "Als gelesen markieren", "viewed": "Gelesen", "ignore": "Ignorieren", "resolve": "Lösen", "details": "Details", "refresh": "Aktualisieren"},
+  "settings": {"title": "Einstellungen", "telegram": "Telegram-Benachrichtigungen", "email": "E-Mail-Benachrichtigungen", "slack": "Slack-Benachrichtigungen", "log": "Protokoll-Benachrichtigungen", "botToken": "Bot-Token", "chatId": "Chat-ID", "emailAddress": "E-Mail-Adresse", "webhookUrl": "Webhook-URL", "testConnection": "Verbindung testen", "saveChanges": "Änderungen speichern"},
+  "domains": {"title": "Domains", "pending": "Ausstehend", "approved": "Genehmigt", "rejected": "Abgelehnt", "approve": "Genehmigen", "reject": "Ablehnen", "domain": "Domain", "firstDetected": "Erstmals erkannt", "lastDetected": "Zuletzt erkannt", "detectionCount": "Anzahl der Erkennungen"},
+  "migration": {"title": "Datenbankmigration", "currentVersion": "Aktuelle Version", "latestVersion": "Neueste Version", "migrationRequired": "Migration erforderlich", "runMigration": "Migration ausführen", "changelog": "Änderungsprotokoll"},
+  "logs": {"title": "Sicherheitsprotokolle", "clearLog": "Protokoll löschen", "download": "Herunterladen", "filter": "Filter", "clearFilter": "Filter löschen"},
+  "security": {"title": "Sicherheitsstatus", "securityScore": "Sicherheitsbewertung", "issuesOverview": "Problemübersicht", "activeMonitors": "Aktive Monitore"},
+  "accessControl": {"title": "Zugriffskontrolle", "loginHistory": "Anmeldungsverlauf", "ipRules": "IP-Regeln", "userPermissions": "Benutzerberechtigungen", "whitelist": "Whitelist", "blacklist": "Blacklist"},
+  "common": {"loading": "Laden...", "noData": "Keine Daten verfügbar", "cancel": "Abbrechen", "delete": "Löschen", "edit": "Bearbeiten", "view": "Ansehen", "refresh": "Aktualisieren", "areYouSure": "Sind Sie sicher?", "success": "Erfolg", "failed": "Fehlgeschlagen", "critical": "Kritisch", "high": "Hoch", "medium": "Mittel", "low": "Niedrig", "new": "Neu", "resolved": "Gelöst", "ignored": "Ignoriert"}
+}
+

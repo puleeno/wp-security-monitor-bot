@@ -1,0 +1,239 @@
+# Vietnamese Translation
+# Copyright (C) 2024 Puleeno
+msgid ""
+msgstr ""
+"Project-Id-Version: WP Security Monitor 1.3.0\n"
+"Language: vi\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "WP Security Monitor"
+msgstr "WP Giám Sát Bảo Mật"
+
+msgid "Advanced security monitoring and threat detection for WordPress"
+msgstr "Giám sát bảo mật nâng cao và phát hiện mối đe dọa cho WordPress"
+
+msgid "Puleeno Security"
+msgstr "Puleeno Bảo Mật"
+
+msgid "Dashboard"
+msgstr "Bảng Điều Khiển"
+
+msgid "Security Logs"
+msgstr "Nhật Ký Bảo Mật"
+
+msgid "Debug Logs Viewer"
+msgstr "Xem Nhật Ký Debug"
+
+msgid "Save Changes"
+msgstr "Lưu Thay Đổi"
+
+msgid "Cancel"
+msgstr "Hủy"
+
+msgid "Delete"
+msgstr "Xóa"
+
+msgid "Edit"
+msgstr "Sửa"
+
+msgid "View"
+msgstr "Xem"
+
+msgid "Refresh"
+msgstr "Làm Mới"
+
+msgid "Loading..."
+msgstr "Đang tải..."
+
+msgid "No data available"
+msgstr "Không có dữ liệu"
+
+msgid "Security Issues"
+msgstr "Vấn Đề Bảo Mật"
+
+msgid "Total Issues"
+msgstr "Tổng Số Vấn Đề"
+
+msgid "Critical"
+msgstr "Nghiêm Trọng"
+
+msgid "High"
+msgstr "Cao"
+
+msgid "Medium"
+msgstr "Trung Bình"
+
+msgid "Low"
+msgstr "Thấp"
+
+msgid "New"
+msgstr "Mới"
+
+msgid "Resolved"
+msgstr "Đã Giải Quyết"
+
+msgid "Ignored"
+msgstr "Đã Bỏ Qua"
+
+msgid "Investigating"
+msgstr "Đang Điều Tra"
+
+msgid "Mark as Viewed"
+msgstr "Đánh Dấu Đã Xem"
+
+msgid "Viewed"
+msgstr "Đã Xem"
+
+msgid "Ignore"
+msgstr "Bỏ Qua"
+
+msgid "Resolve"
+msgstr "Giải Quyết"
+
+msgid "Details"
+msgstr "Chi Tiết"
+
+msgid "Telegram Notifications"
+msgstr "Thông Báo Telegram"
+
+msgid "Email Notifications"
+msgstr "Thông Báo Email"
+
+msgid "Slack Notifications"
+msgstr "Thông Báo Slack"
+
+msgid "Log Notifications"
+msgstr "Thông Báo Nhật Ký"
+
+msgid "Bot Token"
+msgstr "Bot Token"
+
+msgid "Chat ID"
+msgstr "Chat ID"
+
+msgid "Email Address"
+msgstr "Địa Chỉ Email"
+
+msgid "Webhook URL"
+msgstr "Webhook URL"
+
+msgid "Test Connection"
+msgstr "Kiểm Tra Kết Nối"
+
+msgid "Domains"
+msgstr "Tên Miền"
+
+msgid "External Redirects"
+msgstr "Chuyển Hướng Ngoài"
+
+msgid "Pending"
+msgstr "Chờ Xử Lý"
+
+msgid "Approved"
+msgstr "Đã Duyệt"
+
+msgid "Rejected"
+msgstr "Đã Từ Chối"
+
+msgid "Approve"
+msgstr "Duyệt"
+
+msgid "Reject"
+msgstr "Từ Chối"
+
+msgid "Domain"
+msgstr "Tên Miền"
+
+msgid "First Detected"
+msgstr "Phát Hiện Đầu Tiên"
+
+msgid "Last Detected"
+msgstr "Phát Hiện Cuối"
+
+msgid "Detection Count"
+msgstr "Số Lần Phát Hiện"
+
+msgid "Database Migration"
+msgstr "Di Chuyển Cơ Sở Dữ Liệu"
+
+msgid "Current Version"
+msgstr "Phiên Bản Hiện Tại"
+
+msgid "Latest Version"
+msgstr "Phiên Bản Mới Nhất"
+
+msgid "Migration Required"
+msgstr "Cần Di Chuyển"
+
+msgid "Run Migration"
+msgstr "Chạy Di Chuyển"
+
+msgid "Changelog"
+msgstr "Nhật Ký Thay Đổi"
+
+msgid "Clear Log"
+msgstr "Xóa Nhật Ký"
+
+msgid "Download"
+msgstr "Tải Xuống"
+
+msgid "Settings saved successfully!"
+msgstr "Cài đặt đã được lưu thành công!"
+
+msgid "Failed to save settings"
+msgstr "Lưu cài đặt thất bại"
+
+msgid "Are you sure?"
+msgstr "Bạn có chắc chắn?"
+
+msgid "Access Control"
+msgstr "Kiểm Soát Truy Cập"
+
+msgid "Login History"
+msgstr "Lịch Sử Đăng Nhập"
+
+msgid "IP Rules"
+msgstr "Quy Tắc IP"
+
+msgid "User Permissions"
+msgstr "Quyền Người Dùng"
+
+msgid "Username"
+msgstr "Tên Đăng Nhập"
+
+msgid "IP Address"
+msgstr "Địa Chỉ IP"
+
+msgid "Status"
+msgstr "Trạng Thái"
+
+msgid "Actions"
+msgstr "Hành Động"
+
+msgid "Security Status"
+msgstr "Tình Trạng Bảo Mật"
+
+msgid "Security Score"
+msgstr "Điểm Bảo Mật"
+
+msgid "Issue Details"
+msgstr "Chi Tiết Vấn Đề"
+
+msgid "Severity"
+msgstr "Mức Độ Nghiêm Trọng"
+
+msgid "Issuer"
+msgstr "Người Phát Hành"
+
+msgid "Description"
+msgstr "Mô Tả"
+
+msgid "Ignore Reason"
+msgstr "Lý Do Bỏ Qua"
+
+msgid "Resolution Notes"
+msgstr "Ghi Chú Giải Quyết"
+

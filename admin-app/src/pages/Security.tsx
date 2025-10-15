@@ -12,6 +12,7 @@ import {
   EyeOutlined,
 } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 import type { RootState, AppDispatch } from '../store';
 import { fetchStats } from '../reducers/statsReducer';
 import { fetchIssues } from '../reducers/issuesReducer';
@@ -22,6 +23,7 @@ const { Title, Text } = Typography;
 
 const Security: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
+  const { t } = useTranslation();
   const [initialLoading, setInitialLoading] = useState(true);
 
   const { security, bot } = useSelector((state: RootState) => state.stats);
@@ -39,7 +41,7 @@ const Security: React.FC = () => {
   }, [security, bot]);
 
   if (initialLoading) {
-    return <PageLoading message="Đang tải security status..." />;
+    return <PageLoading message={t('common.loading')} />;
   }
 
   // Calculate security score (0-100)

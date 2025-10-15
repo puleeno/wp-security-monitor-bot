@@ -1,0 +1,12 @@
+{
+  "dashboard": {"title": "대시보드", "securityOverview": "보안 개요", "statistics": "통계", "notificationChannels": "알림 채널", "botSchedule": "봇 일정", "recentIssues": "최근 문제"},
+  "issues": {"title": "보안 문제", "totalIssues": "총 {{count}}개 문제", "markViewed": "읽음으로 표시", "viewed": "읽음", "ignore": "무시", "resolve": "해결", "details": "세부정보", "refresh": "새로고침"},
+  "settings": {"title": "설정", "telegram": "Telegram 알림", "email": "이메일 알림", "slack": "Slack 알림", "log": "로그 알림", "botToken": "봇 토큰", "chatId": "채팅 ID", "emailAddress": "이메일 주소", "webhookUrl": "Webhook URL", "testConnection": "연결 테스트", "saveChanges": "변경사항 저장"},
+  "domains": {"title": "도메인", "pending": "대기 중", "approved": "승인됨", "rejected": "거부됨", "approve": "승인", "reject": "거부", "domain": "도메인", "firstDetected": "첫 감지", "lastDetected": "마지막 감지", "detectionCount": "감지 횟수"},
+  "migration": {"title": "데이터베이스 마이그레이션", "currentVersion": "현재 버전", "latestVersion": "최신 버전", "migrationRequired": "마이그레이션 필요", "runMigration": "마이그레이션 실행", "changelog": "변경 기록"},
+  "logs": {"title": "보안 로그", "clearLog": "로그 지우기", "download": "다운로드", "filter": "필터", "clearFilter": "필터 지우기"},
+  "security": {"title": "보안 상태", "securityScore": "보안 점수", "issuesOverview": "문제 개요", "activeMonitors": "활성 모니터"},
+  "accessControl": {"title": "접근 제어", "loginHistory": "로그인 기록", "ipRules": "IP 규칙", "userPermissions": "사용자 권한", "whitelist": "화이트리스트", "blacklist": "블랙리스트"},
+  "common": {"loading": "로딩 중...", "noData": "데이터 없음", "cancel": "취소", "delete": "삭제", "edit": "편집", "view": "보기", "refresh": "새로고침", "areYouSure": "확실합니까?", "success": "성공", "failed": "실패", "critical": "치명적", "high": "높음", "medium": "보통", "low": "낮음", "new": "새로운", "resolved": "해결됨", "ignored": "무시됨"}
+}
+

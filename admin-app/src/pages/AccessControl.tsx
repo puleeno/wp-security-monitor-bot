@@ -12,6 +12,7 @@ import {
   PlusOutlined,
   DeleteOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import PageLoading from '../components/Loading/PageLoading';
 
 const { Title, Text } = Typography;
@@ -35,6 +36,7 @@ interface LoginAttempt {
 }
 
 const AccessControl: React.FC = () => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('login-history');
 
@@ -53,7 +55,7 @@ const AccessControl: React.FC = () => {
   }, []);
 
   if (loading) {
-    return <PageLoading message="Đang tải access control..." />;
+    return <PageLoading message={t('common.loading')} />;
   }
 
   const handleAddIPRule = (type: 'whitelist' | 'blacklist') => {

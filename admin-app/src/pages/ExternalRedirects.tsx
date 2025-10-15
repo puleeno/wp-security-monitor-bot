@@ -14,6 +14,7 @@ import { ajax } from 'rxjs/ajax';
 import { buildUrl, getApiHeaders } from '../services/api';
 import { addNotification } from '../reducers/uiReducer';
 import { useDispatch } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 import PageLoading from '../components/Loading/PageLoading';
 
 const { Title, Text } = Typography;
@@ -39,6 +40,7 @@ interface PendingRedirect {
 
 const ExternalRedirects: React.FC = () => {
   const dispatch = useDispatch();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
   const [redirects, setRedirects] = useState<PendingRedirect[]>([]);
@@ -149,7 +151,7 @@ const ExternalRedirects: React.FC = () => {
   };
 
   if (loading) {
-    return <PageLoading message="Đang tải domains..." />;
+    return <PageLoading message={t('common.loading')} />;
   }
 
   const getStatusColor = (status: string): string => {

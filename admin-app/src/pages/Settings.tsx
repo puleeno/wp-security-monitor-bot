@@ -5,6 +5,7 @@ import {
 } from 'antd';
 import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 import { ajax } from 'rxjs/ajax';
 import type { RootState, AppDispatch } from '../store';
 import { fetchSettings, updateSettings } from '../reducers/settingsReducer';
@@ -17,6 +18,7 @@ const { TextArea } = Input;
 
 const Settings: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
+  const { t } = useTranslation();
   const settingsState = useSelector((state: RootState) => state.settings);
   const [form] = Form.useForm();
   const [initialLoading, setInitialLoading] = useState(true);
@@ -114,25 +116,25 @@ const Settings: React.FC = () => {
 
   // Show loading CHỈ khi initial load
   if (initialLoading) {
-    return <PageLoading message="Đang tải settings..." />;
+    return <PageLoading message={t('common.loading')} />;
   }
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={2} style={{ margin: 0 }}>⚙️ Settings</Title>
+        <Title level={2} style={{ margin: 0 }}>⚙️ {t('settings.title')}</Title>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={handleReset}>Reset</Button>
+          <Button icon={<ReloadOutlined />} onClick={handleReset}>{t('settings.reset')}</Button>
           <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={isSaving}>
-            Save Settings
+            {t('settings.saveChanges')}
           </Button>
         </Space>
       </div>
 
       {isSaving && (
         <Alert
-          message="⏳ Đang lưu settings..."
-          description="Vui lòng đợi, đang cập nhật cấu hình..."
+          message={`⏳ ${t('settings.saving')}`}
+          description={t('settings.savingDescription')}
           type="warning"
           showIcon
           style={{ marginBottom: 24 }}

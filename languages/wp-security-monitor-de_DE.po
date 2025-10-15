@@ -1,0 +1,239 @@
+# German Translation
+# Copyright (C) 2024 Puleeno
+msgid ""
+msgstr ""
+"Project-Id-Version: WP Security Monitor 1.3.0\n"
+"Language: de_DE\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "WP Security Monitor"
+msgstr "WP Sicherheitsmonitor"
+
+msgid "Advanced security monitoring and threat detection for WordPress"
+msgstr "Erweiterte Sicherheitsüberwachung und Bedrohungserkennung für WordPress"
+
+msgid "Puleeno Security"
+msgstr "Puleeno Sicherheit"
+
+msgid "Dashboard"
+msgstr "Dashboard"
+
+msgid "Security Logs"
+msgstr "Sicherheitsprotokolle"
+
+msgid "Debug Logs Viewer"
+msgstr "Debug-Protokoll-Viewer"
+
+msgid "Save Changes"
+msgstr "Änderungen speichern"
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Delete"
+msgstr "Löschen"
+
+msgid "Edit"
+msgstr "Bearbeiten"
+
+msgid "View"
+msgstr "Ansehen"
+
+msgid "Refresh"
+msgstr "Aktualisieren"
+
+msgid "Loading..."
+msgstr "Laden..."
+
+msgid "No data available"
+msgstr "Keine Daten verfügbar"
+
+msgid "Security Issues"
+msgstr "Sicherheitsprobleme"
+
+msgid "Total Issues"
+msgstr "Gesamtzahl der Probleme"
+
+msgid "Critical"
+msgstr "Kritisch"
+
+msgid "High"
+msgstr "Hoch"
+
+msgid "Medium"
+msgstr "Mittel"
+
+msgid "Low"
+msgstr "Niedrig"
+
+msgid "New"
+msgstr "Neu"
+
+msgid "Resolved"
+msgstr "Gelöst"
+
+msgid "Ignored"
+msgstr "Ignoriert"
+
+msgid "Investigating"
+msgstr "Wird untersucht"
+
+msgid "Mark as Viewed"
+msgstr "Als gelesen markieren"
+
+msgid "Viewed"
+msgstr "Gelesen"
+
+msgid "Ignore"
+msgstr "Ignorieren"
+
+msgid "Resolve"
+msgstr "Lösen"
+
+msgid "Details"
+msgstr "Details"
+
+msgid "Telegram Notifications"
+msgstr "Telegram-Benachrichtigungen"
+
+msgid "Email Notifications"
+msgstr "E-Mail-Benachrichtigungen"
+
+msgid "Slack Notifications"
+msgstr "Slack-Benachrichtigungen"
+
+msgid "Log Notifications"
+msgstr "Protokoll-Benachrichtigungen"
+
+msgid "Bot Token"
+msgstr "Bot-Token"
+
+msgid "Chat ID"
+msgstr "Chat-ID"
+
+msgid "Email Address"
+msgstr "E-Mail-Adresse"
+
+msgid "Webhook URL"
+msgstr "Webhook-URL"
+
+msgid "Test Connection"
+msgstr "Verbindung testen"
+
+msgid "Domains"
+msgstr "Domains"
+
+msgid "External Redirects"
+msgstr "Externe Weiterleitungen"
+
+msgid "Pending"
+msgstr "Ausstehend"
+
+msgid "Approved"
+msgstr "Genehmigt"
+
+msgid "Rejected"
+msgstr "Abgelehnt"
+
+msgid "Approve"
+msgstr "Genehmigen"
+
+msgid "Reject"
+msgstr "Ablehnen"
+
+msgid "Domain"
+msgstr "Domain"
+
+msgid "First Detected"
+msgstr "Erstmals erkannt"
+
+msgid "Last Detected"
+msgstr "Zuletzt erkannt"
+
+msgid "Detection Count"
+msgstr "Anzahl der Erkennungen"
+
+msgid "Database Migration"
+msgstr "Datenbankmigration"
+
+msgid "Current Version"
+msgstr "Aktuelle Version"
+
+msgid "Latest Version"
+msgstr "Neueste Version"
+
+msgid "Migration Required"
+msgstr "Migration erforderlich"
+
+msgid "Run Migration"
+msgstr "Migration ausführen"
+
+msgid "Changelog"
+msgstr "Änderungsprotokoll"
+
+msgid "Clear Log"
+msgstr "Protokoll löschen"
+
+msgid "Download"
+msgstr "Herunterladen"
+
+msgid "Settings saved successfully!"
+msgstr "Einstellungen erfolgreich gespeichert!"
+
+msgid "Failed to save settings"
+msgstr "Fehler beim Speichern der Einstellungen"
+
+msgid "Are you sure?"
+msgstr "Sind Sie sicher?"
+
+msgid "Access Control"
+msgstr "Zugriffskontrolle"
+
+msgid "Login History"
+msgstr "Anmeldungsverlauf"
+
+msgid "IP Rules"
+msgstr "IP-Regeln"
+
+msgid "User Permissions"
+msgstr "Benutzerberechtigungen"
+
+msgid "Username"
+msgstr "Benutzername"
+
+msgid "IP Address"
+msgstr "IP-Adresse"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Actions"
+msgstr "Aktionen"
+
+msgid "Security Status"
+msgstr "Sicherheitsstatus"
+
+msgid "Security Score"
+msgstr "Sicherheitsbewertung"
+
+msgid "Issue Details"
+msgstr "Problemdetails"
+
+msgid "Severity"
+msgstr "Schweregrad"
+
+msgid "Issuer"
+msgstr "Aussteller"
+
+msgid "Description"
+msgstr "Beschreibung"
+
+msgid "Ignore Reason"
+msgstr "Grund für Ignorierung"
+
+msgid "Resolution Notes"
+msgstr "Lösungshinweise"
+

@@ -1,0 +1,362 @@
+# WP Security Monitor - POT Template
+# Copyright (C) 2024 Puleeno
+# This file is distributed under the same license as the WP Security Monitor package.
+msgid ""
+msgstr ""
+"Project-Id-Version: WP Security Monitor 1.3.0\n"
+"Report-Msgid-Bugs-To: https://github.com/puleeno/wp-security-monitor\n"
+"POT-Creation-Date: 2024-10-15 12:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+# Plugin Header
+msgid "WP Security Monitor"
+msgstr ""
+
+msgid "Advanced security monitoring and threat detection for WordPress"
+msgstr ""
+
+# Menu Items
+msgid "Puleeno Security"
+msgstr ""
+
+msgid "Dashboard"
+msgstr ""
+
+msgid "Security Logs"
+msgstr ""
+
+msgid "Debug Logs Viewer"
+msgstr ""
+
+# Common UI
+msgid "Save Changes"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "Edit"
+msgstr ""
+
+msgid "View"
+msgstr ""
+
+msgid "Refresh"
+msgstr ""
+
+msgid "Loading..."
+msgstr ""
+
+msgid "No data available"
+msgstr ""
+
+# Security Monitor
+msgid "Security Issues"
+msgstr ""
+
+msgid "Total Issues"
+msgstr ""
+
+msgid "Critical"
+msgstr ""
+
+msgid "High"
+msgstr ""
+
+msgid "Medium"
+msgstr ""
+
+msgid "Low"
+msgstr ""
+
+msgid "New"
+msgstr ""
+
+msgid "Resolved"
+msgstr ""
+
+msgid "Ignored"
+msgstr ""
+
+msgid "Investigating"
+msgstr ""
+
+# Actions
+msgid "Mark as Viewed"
+msgstr ""
+
+msgid "Viewed"
+msgstr ""
+
+msgid "Ignore"
+msgstr ""
+
+msgid "Resolve"
+msgstr ""
+
+msgid "Details"
+msgstr ""
+
+# Notifications
+msgid "Telegram Notifications"
+msgstr ""
+
+msgid "Email Notifications"
+msgstr ""
+
+msgid "Slack Notifications"
+msgstr ""
+
+msgid "Log Notifications"
+msgstr ""
+
+msgid "Enable Telegram Notifications"
+msgstr ""
+
+msgid "Enable Email Notifications"
+msgstr ""
+
+msgid "Enable Slack Notifications"
+msgstr ""
+
+msgid "Enable Log Notifications"
+msgstr ""
+
+msgid "Bot Token"
+msgstr ""
+
+msgid "Chat ID"
+msgstr ""
+
+msgid "Email Address"
+msgstr ""
+
+msgid "Webhook URL"
+msgstr ""
+
+msgid "Test Connection"
+msgstr ""
+
+# Domains
+msgid "Domains"
+msgstr ""
+
+msgid "External Redirects"
+msgstr ""
+
+msgid "Pending"
+msgstr ""
+
+msgid "Approved"
+msgstr ""
+
+msgid "Rejected"
+msgstr ""
+
+msgid "Approve"
+msgstr ""
+
+msgid "Reject"
+msgstr ""
+
+msgid "Domain"
+msgstr ""
+
+msgid "First Detected"
+msgstr ""
+
+msgid "Last Detected"
+msgstr ""
+
+msgid "Detection Count"
+msgstr ""
+
+# Migration
+msgid "Database Migration"
+msgstr ""
+
+msgid "Current Version"
+msgstr ""
+
+msgid "Latest Version"
+msgstr ""
+
+msgid "Migration Required"
+msgstr ""
+
+msgid "Run Migration"
+msgstr ""
+
+msgid "Changelog"
+msgstr ""
+
+# Logs
+msgid "Clear Log"
+msgstr ""
+
+msgid "Download"
+msgstr ""
+
+msgid "Filter logs..."
+msgstr ""
+
+msgid "Filter"
+msgstr ""
+
+msgid "Clear Filter"
+msgstr ""
+
+msgid "Total Lines"
+msgstr ""
+
+msgid "Showing"
+msgstr ""
+
+msgid "lines"
+msgstr ""
+
+msgid "Modified"
+msgstr ""
+
+# Messages
+msgid "Settings saved successfully!"
+msgstr ""
+
+msgid "Failed to save settings"
+msgstr ""
+
+msgid "Are you sure?"
+msgstr ""
+
+msgid "This action cannot be undone"
+msgstr ""
+
+msgid "Successfully deleted"
+msgstr ""
+
+msgid "Operation failed"
+msgstr ""
+
+msgid "Please fill in all required fields"
+msgstr ""
+
+msgid "Invalid email address"
+msgstr ""
+
+msgid "Invalid URL format"
+msgstr ""
+
+# Access Control
+msgid "Access Control"
+msgstr ""
+
+msgid "Login History"
+msgstr ""
+
+msgid "IP Rules"
+msgstr ""
+
+msgid "User Permissions"
+msgstr ""
+
+msgid "Username"
+msgstr ""
+
+msgid "IP Address"
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "Actions"
+msgstr ""
+
+msgid "Success"
+msgstr ""
+
+msgid "Failed"
+msgstr ""
+
+msgid "Whitelist"
+msgstr ""
+
+msgid "Blacklist"
+msgstr ""
+
+msgid "Add IP Rule"
+msgstr ""
+
+# Security Status
+msgid "Security Status"
+msgstr ""
+
+msgid "Security Score"
+msgstr ""
+
+msgid "Issues Overview"
+msgstr ""
+
+msgid "Active Monitors"
+msgstr ""
+
+msgid "Notification Channels"
+msgstr ""
+
+msgid "Last Check"
+msgstr ""
+
+msgid "Next Check"
+msgstr ""
+
+msgid "Total Found"
+msgstr ""
+
+# Issue Details
+msgid "Issue Details"
+msgstr ""
+
+msgid "Severity"
+msgstr ""
+
+msgid "Issuer"
+msgstr ""
+
+msgid "Description"
+msgstr ""
+
+msgid "Technical Details"
+msgstr ""
+
+msgid "Backtrace"
+msgstr ""
+
+msgid "Metadata"
+msgstr ""
+
+msgid "Ignore Reason"
+msgstr ""
+
+msgid "Resolution Notes"
+msgstr ""
+
+msgid "Ignored By"
+msgstr ""
+
+msgid "Ignored At"
+msgstr ""
+
+msgid "Resolved By"
+msgstr ""
+
+msgid "Resolved At"
+msgstr ""
+

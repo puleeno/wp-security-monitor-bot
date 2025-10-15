@@ -5,7 +5,9 @@
  * Author: Puleeno Nguyen
  * Description: Advanced WordPress security monitoring system with real-time notifications via Telegram, Email, and Slack. Tracks external redirects, login attempts, file changes, admin user creation, and dangerous PHP functions automatically.
  * Author URI: https://puleeno.com
- * Version: 1.0.0
+ * Version: 1.3.0
+ * Text Domain: wp-security-monitor
+ * Domain Path: /languages
  */
 
 // Load Composer autoloader ngay lập tức
@@ -22,6 +24,21 @@ if (!class_exists('WP_Security_Monitor_Bot')) {
         protected function __construct()
         {
             // Composer autoloader đã được load ở trên
+
+            // Load text domain for translations
+            add_action('plugins_loaded', [$this, 'loadTextDomain']);
+        }
+
+        /**
+         * Load plugin text domain for translations
+         */
+        public function loadTextDomain()
+        {
+            load_plugin_textdomain(
+                'wp-security-monitor',
+                false,
+                dirname(plugin_basename(__FILE__)) . '/languages'
+            );
         }
 
         public static function getInstance()

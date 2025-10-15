@@ -1,0 +1,94 @@
+{
+  "dashboard": {
+    "title": "仪表板",
+    "securityOverview": "安全概览",
+    "statistics": "统计",
+    "notificationChannels": "通知渠道",
+    "botSchedule": "机器人计划",
+    "recentIssues": "最近问题"
+  },
+  "issues": {
+    "title": "安全问题",
+    "totalIssues": "总共 {{count}} 个问题",
+    "markViewed": "标记为已查看",
+    "viewed": "已查看",
+    "ignore": "忽略",
+    "resolve": "解决",
+    "details": "详情",
+    "refresh": "刷新"
+  },
+  "settings": {
+    "title": "设置",
+    "telegram": "Telegram 通知",
+    "email": "电子邮件通知",
+    "slack": "Slack 通知",
+    "log": "日志通知",
+    "botToken": "机器人令牌",
+    "chatId": "聊天 ID",
+    "emailAddress": "电子邮件地址",
+    "webhookUrl": "Webhook 网址",
+    "testConnection": "测试连接",
+    "saveChanges": "保存更改"
+  },
+  "domains": {
+    "title": "域名",
+    "pending": "待处理",
+    "approved": "已批准",
+    "rejected": "已拒绝",
+    "approve": "批准",
+    "reject": "拒绝",
+    "domain": "域名",
+    "firstDetected": "首次检测",
+    "lastDetected": "最后检测",
+    "detectionCount": "检测次数"
+  },
+  "migration": {
+    "title": "数据库迁移",
+    "currentVersion": "当前版本",
+    "latestVersion": "最新版本",
+    "migrationRequired": "需要迁移",
+    "runMigration": "运行迁移",
+    "changelog": "更新日志"
+  },
+  "logs": {
+    "title": "安全日志",
+    "clearLog": "清除日志",
+    "download": "下载",
+    "filter": "筛选",
+    "clearFilter": "清除筛选"
+  },
+  "security": {
+    "title": "安全状态",
+    "securityScore": "安全评分",
+    "issuesOverview": "问题概览",
+    "activeMonitors": "活动监控器"
+  },
+  "accessControl": {
+    "title": "访问控制",
+    "loginHistory": "登录历史",
+    "ipRules": "IP 规则",
+    "userPermissions": "用户权限",
+    "whitelist": "白名单",
+    "blacklist": "黑名单"
+  },
+  "common": {
+    "loading": "加载中...",
+    "noData": "没有可用数据",
+    "cancel": "取消",
+    "delete": "删除",
+    "edit": "编辑",
+    "view": "查看",
+    "refresh": "刷新",
+    "areYouSure": "您确定吗？",
+    "success": "成功",
+    "failed": "失败",
+    "critical": "严重",
+    "high": "高",
+    "medium": "中等",
+    "low": "低",
+    "new": "新",
+    "resolved": "已解决",
+    "ignored": "已忽略"
+  }
+}
+

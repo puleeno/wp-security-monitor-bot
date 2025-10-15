@@ -1,0 +1,12 @@
+{
+  "dashboard": {"title": "Tableau de bord", "securityOverview": "Aperçu de la sécurité", "statistics": "Statistiques", "notificationChannels": "Canaux de notification", "botSchedule": "Planification du bot", "recentIssues": "Problèmes récents"},
+  "issues": {"title": "Problèmes de sécurité", "totalIssues": "Total {{count}} problèmes", "markViewed": "Marquer comme lu", "viewed": "Lu", "ignore": "Ignorer", "resolve": "Résoudre", "details": "Détails", "refresh": "Actualiser"},
+  "settings": {"title": "Paramètres", "telegram": "Notifications Telegram", "email": "Notifications par e-mail", "slack": "Notifications Slack", "log": "Notifications journal", "botToken": "Jeton du bot", "chatId": "ID de chat", "emailAddress": "Adresse e-mail", "webhookUrl": "URL du Webhook", "testConnection": "Tester la connexion", "saveChanges": "Enregistrer les modifications"},
+  "domains": {"title": "Domaines", "pending": "En attente", "approved": "Approuvé", "rejected": "Rejeté", "approve": "Approuver", "reject": "Rejeter", "domain": "Domaine", "firstDetected": "Première détection", "lastDetected": "Dernière détection", "detectionCount": "Nombre de détections"},
+  "migration": {"title": "Migration de base de données", "currentVersion": "Version actuelle", "latestVersion": "Dernière version", "migrationRequired": "Migration requise", "runMigration": "Exécuter la migration", "changelog": "Journal des modifications"},
+  "logs": {"title": "Journaux de sécurité", "clearLog": "Effacer le journal", "download": "Télécharger", "filter": "Filtrer", "clearFilter": "Effacer le filtre"},
+  "security": {"title": "État de sécurité", "securityScore": "Score de sécurité", "issuesOverview": "Aperçu des problèmes", "activeMonitors": "Moniteurs actifs"},
+  "accessControl": {"title": "Contrôle d'accès", "loginHistory": "Historique de connexion", "ipRules": "Règles IP", "userPermissions": "Permissions utilisateur", "whitelist": "Liste blanche", "blacklist": "Liste noire"},
+  "common": {"loading": "Chargement...", "noData": "Aucune donnée disponible", "cancel": "Annuler", "delete": "Supprimer", "edit": "Modifier", "view": "Voir", "refresh": "Actualiser", "areYouSure": "Êtes-vous sûr ?", "success": "Succès", "failed": "Échec", "critical": "Critique", "high": "Élevé", "medium": "Moyen", "low": "Faible", "new": "Nouveau", "resolved": "Résolu", "ignored": "Ignoré"}
+}
+

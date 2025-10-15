@@ -7,6 +7,7 @@ import { store } from './store';
 import App from './App';
 import { antdTheme } from './utils/theme';
 import './styles/global.css';
+import './i18n'; // Initialize i18next
 
 // Strict mode enabled
 ReactDOM.createRoot(document.getElementById('wp-security-monitor-root')!).render(

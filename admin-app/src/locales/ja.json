@@ -1,0 +1,94 @@
+{
+  "dashboard": {
+    "title": "ダッシュボード",
+    "securityOverview": "セキュリティ概要",
+    "statistics": "統計",
+    "notificationChannels": "通知チャンネル",
+    "botSchedule": "ボットスケジュール",
+    "recentIssues": "最近の問題"
+  },
+  "issues": {
+    "title": "セキュリティ問題",
+    "totalIssues": "合計 {{count}} 件の問題",
+    "markViewed": "既読にする",
+    "viewed": "既読",
+    "ignore": "無視",
+    "resolve": "解決",
+    "details": "詳細",
+    "refresh": "更新"
+  },
+  "settings": {
+    "title": "設定",
+    "telegram": "Telegram 通知",
+    "email": "メール通知",
+    "slack": "Slack 通知",
+    "log": "ログ通知",
+    "botToken": "ボットトークン",
+    "chatId": "チャット ID",
+    "emailAddress": "メールアドレス",
+    "webhookUrl": "Webhook URL",
+    "testConnection": "接続テスト",
+    "saveChanges": "変更を保存"
+  },
+  "domains": {
+    "title": "ドメイン",
+    "pending": "保留中",
+    "approved": "承認済み",
+    "rejected": "拒否済み",
+    "approve": "承認",
+    "reject": "拒否",
+    "domain": "ドメイン",
+    "firstDetected": "初回検出",
+    "lastDetected": "最終検出",
+    "detectionCount": "検出回数"
+  },
+  "migration": {
+    "title": "データベース移行",
+    "currentVersion": "現在のバージョン",
+    "latestVersion": "最新バージョン",
+    "migrationRequired": "移行が必要",
+    "runMigration": "移行を実行",
+    "changelog": "変更履歴"
+  },
+  "logs": {
+    "title": "セキュリティログ",
+    "clearLog": "ログをクリア",
+    "download": "ダウンロード",
+    "filter": "フィルター",
+    "clearFilter": "フィルターをクリア"
+  },
+  "security": {
+    "title": "セキュリティステータス",
+    "securityScore": "セキュリティスコア",
+    "issuesOverview": "問題の概要",
+    "activeMonitors": "アクティブなモニター"
+  },
+  "accessControl": {
+    "title": "アクセス制御",
+    "loginHistory": "ログイン履歴",
+    "ipRules": "IP ルール",
+    "userPermissions": "ユーザー権限",
+    "whitelist": "ホワイトリスト",
+    "blacklist": "ブラックリスト"
+  },
+  "common": {
+    "loading": "読み込み中...",
+    "noData": "データなし",
+    "cancel": "キャンセル",
+    "delete": "削除",
+    "edit": "編集",
+    "view": "表示",
+    "refresh": "更新",
+    "areYouSure": "よろしいですか？",
+    "success": "成功",
+    "failed": "失敗",
+    "critical": "重大",
+    "high": "高",
+    "medium": "中",
+    "low": "低",
+    "new": "新規",
+    "resolved": "解決済み",
+    "ignored": "無視"
+  }
+}
+

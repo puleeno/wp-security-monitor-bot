@@ -98,8 +98,8 @@ if ($filterKeyword && !empty($lines)) {
 ?>
 
 <div class="wrap">
-    <h1>📋 Debug Logs Viewer</h1>
-    <p>Xem và quản lý debug logs của WordPress và WP Security Monitor plugin.</p>
+    <h1>📋 <?php _e('Debug Logs Viewer', 'wp-security-monitor'); ?></h1>
+    <p><?php _e('Xem và quản lý debug logs của WordPress và WP Security Monitor plugin.', 'wp-security-monitor'); ?></p>
 
     <?php if (!is_dir($pluginLogDir)): ?>
         <div class="notice notice-info">

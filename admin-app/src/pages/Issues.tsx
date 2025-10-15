@@ -10,6 +10,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 import type { RootState, AppDispatch } from '../store';
 import {
   fetchIssues,
@@ -28,6 +29,7 @@ const { Panel } = Collapse;
 
 const Issues: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
+  const { t } = useTranslation();
   const { items, total, currentPage, perPage, loading, filters } = useSelector(
     (state: RootState) => state.issues
   );
@@ -61,7 +63,7 @@ const Issues: React.FC = () => {
   };
 
   if (initialLoading) {
-    return <PageLoading message="Đang tải issues..." />;
+    return <PageLoading message={t('common.loading')} />;
   }
 
   const getStatusColor = (status: string): string => {
@@ -161,7 +163,7 @@ const Issues: React.FC = () => {
       render: (status: string, record: Issue) => (
         <Space direction="vertical" size={0}>
           <Tag color={getStatusColor(status)}>{status}</Tag>
-          {record.viewed && <Tag color="green">✅ Đã xem</Tag>}
+          {record.viewed && <Tag color="green">✅ {t('issues.viewed')}</Tag>}
         </Space>
       ),
     },
@@ -177,7 +179,7 @@ const Issues: React.FC = () => {
             icon={<EyeOutlined />}
             onClick={() => handleMarkViewed(record.id, record.viewed)}
           >
-            {record.viewed ? 'Đã xem' : 'Đánh dấu'}
+            {record.viewed ? t('issues.viewed') : t('issues.markViewed')}
           </Button>
 
           <Button
@@ -187,7 +189,7 @@ const Issues: React.FC = () => {
               setDetailsVisible(true);
             }}
           >
-            Chi tiết
+            {t('issues.details')}
           </Button>
 
           {!record.is_ignored && (
@@ -200,7 +202,7 @@ const Issues: React.FC = () => {
                   setIgnoreModal(true);
                 }}
               >
-                Ignore
+                {t('issues.ignore')}
               </Button>
 
               {record.status !== 'resolved' && (
@@ -213,7 +215,7 @@ const Issues: React.FC = () => {
                     setResolveModal(true);
                   }}
                 >
-                  Resolve
+                  {t('issues.resolve')}
                 </Button>
               )}
             </>
@@ -226,9 +228,9 @@ const Issues: React.FC = () => {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={2} style={{ margin: 0 }}>🔍 Security Issues</Title>
+        <Title level={2} style={{ margin: 0 }}>🔍 {t('issues.title')}</Title>
         <Button icon={<ReloadOutlined />} onClick={() => dispatch(fetchIssues({ page: currentPage, filters }))}>
-          Refresh
+          {t('issues.refresh')}
         </Button>
       </div>
 
@@ -248,13 +250,13 @@ const Issues: React.FC = () => {
           onChange={(page) => dispatch(fetchIssues({ page, filters }))}
           style={{ marginTop: 16, textAlign: 'right' }}
           showSizeChanger={false}
-          showTotal={(total) => `Tổng ${total} issues`}
+          showTotal={(total) => t('issues.totalIssues', { count: total })}
         />
       </Card>
 
       {/* Issue Details Drawer */}
       <Drawer
-        title="Chi tiết Issue"
+        title={t('issues.issueDetails')}
         placement="right"
         width={720}
         open={detailsVisible}
@@ -281,21 +283,21 @@ const Issues: React.FC = () => {
               </Descriptions.Item>
               {selectedIssue.is_ignored && selectedIssue.ignored_at && (
                 <>
-                  <Descriptions.Item label="Ignored By">
+                  <Descriptions.Item label={t('issues.ignoredBy')}>
                     User ID: {selectedIssue.ignored_by || 'Unknown'}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Ignored At">
-                    {new Date(selectedIssue.ignored_at).toLocaleString('vi-VN')}
+                  <Descriptions.Item label={t('issues.ignoredAt')}>
+                    {new Date(selectedIssue.ignored_at).toLocaleString()}
                   </Descriptions.Item>
                 </>
               )}
               {selectedIssue.status === 'resolved' && selectedIssue.resolved_at && (
                 <>
-                  <Descriptions.Item label="Resolved By">
+                  <Descriptions.Item label={t('issues.resolvedBy')}>
                     User ID: {selectedIssue.resolved_by || 'Unknown'}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Resolved At">
-                    {new Date(selectedIssue.resolved_at).toLocaleString('vi-VN')}
+                  <Descriptions.Item label={t('issues.resolvedAt')}>
+                    {new Date(selectedIssue.resolved_at).toLocaleString()}
                   </Descriptions.Item>
                 </>
               )}
@@ -309,7 +311,7 @@ const Issues: React.FC = () => {
             {/* Ignore Reason */}
             {selectedIssue.is_ignored && selectedIssue.ignore_reason && (
               <Alert
-                message="🚫 Ignore Reason"
+                message={`🚫 ${t('issues.ignoreReasonLabel')}`}
                 description={selectedIssue.ignore_reason}
                 type="warning"
                 showIcon
@@ -319,7 +321,7 @@ const Issues: React.FC = () => {
             {/* Resolution Notes */}
             {selectedIssue.status === 'resolved' && selectedIssue.resolution_notes && (
               <Alert
-                message="✅ Resolution Notes"
+                message={`✅ ${t('issues.resolutionNotesLabel')}`}
                 description={selectedIssue.resolution_notes}
                 type="success"
                 showIcon
@@ -444,40 +446,40 @@ const Issues: React.FC = () => {
 
       {/* Ignore Modal */}
       <Modal
-        title="🚫 Ignore Issue"
+        title={`🚫 ${t('issues.ignoreIssue')}`}
         open={ignoreModal}
         onOk={handleIgnore}
         onCancel={() => setIgnoreModal(false)}
-        okText="Ignore"
-        cancelText="Cancel"
+        okText={t('issues.ignore')}
+        cancelText={t('common.cancel')}
       >
         <Space direction="vertical" style={{ width: '100%' }}>
-          <Text>Lý do ignore issue này:</Text>
+          <Text>{t('issues.ignoreReason')}</Text>
           <TextArea
             rows={4}
             value={ignoreReason}
             onChange={(e) => setIgnoreReason(e.target.value)}
-            placeholder="Optional reason..."
+            placeholder={t('issues.optionalReason')}
           />
         </Space>
       </Modal>
 
       {/* Resolve Modal */}
       <Modal
-        title="✅ Resolve Issue"
+        title={`✅ ${t('issues.resolveIssue')}`}
         open={resolveModal}
         onOk={handleResolve}
         onCancel={() => setResolveModal(false)}
-        okText="Resolve"
-        cancelText="Cancel"
+        okText={t('issues.resolve')}
+        cancelText={t('common.cancel')}
       >
         <Space direction="vertical" style={{ width: '100%' }}>
-          <Text>Mô tả cách xử lý:</Text>
+          <Text>{t('issues.resolutionNotes')}</Text>
           <TextArea
             rows={4}
             value={resolutionNotes}
             onChange={(e) => setResolutionNotes(e.target.value)}
-            placeholder="Describe how this issue was resolved..."
+            placeholder={t('issues.resolutionPlaceholder')}
           />
         </Space>
       </Modal>

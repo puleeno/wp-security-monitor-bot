@@ -7,6 +7,7 @@ import {
   BellOutlined,
 } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 import type { RootState, AppDispatch } from '../store';
 import { fetchStats } from '../reducers/statsReducer';
 import { fetchIssues } from '../reducers/issuesReducer';
@@ -19,6 +20,7 @@ const { Text } = Typography;
 
 const Dashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
+  const { t } = useTranslation();
   const [initialLoading, setInitialLoading] = useState(true);
 
   const { security, bot, loading } = useSelector((state: RootState) => state.stats);
@@ -48,7 +50,7 @@ const Dashboard: React.FC = () => {
   };
 
   if (initialLoading) {
-    return <PageLoading message="Đang tải dashboard..." />;
+    return <PageLoading message={t('common.loading')} />;
   }
 
   const columns = [
@@ -97,7 +99,7 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Tổng Issues"
+              title={t('dashboard.totalIssues')}
               value={security?.total_issues || 0}
               prefix={<WarningOutlined />}
               valueStyle={{ color: '#d63638' }}
@@ -107,7 +109,7 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Issues Mới"
+              title={t('common.newIssues')}
               value={security?.new_issues || 0}
               prefix={<BellOutlined />}
               valueStyle={{ color: '#f56e28' }}
@@ -117,7 +119,7 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Đã Resolved"
+              title={t('common.resolved')}
               value={security?.resolved_issues || 0}
               prefix={<CheckCircleOutlined />}
               valueStyle={{ color: '#00a32a' }}
@@ -127,7 +129,7 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Monitors"
+              title={t('common.monitors')}
               value={bot?.issuers_count || 0}
               prefix={<ClockCircleOutlined />}
               valueStyle={{ color: '#2271b1' }}
@@ -139,7 +141,7 @@ const Dashboard: React.FC = () => {
       {/* Channels & Bot Info */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} md={12}>
-          <Card title="📡 Notification Channels">
+          <Card title={`📡 ${t('dashboard.notificationChannels')}`}>
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Space>
@@ -150,9 +152,9 @@ const Dashboard: React.FC = () => {
                   </div>
                 </Space>
                 {telegram?.enabled ? (
-                  <Tag color="green" icon={<CheckCircleOutlined />}>Active</Tag>
+                  <Tag color="green" icon={<CheckCircleOutlined />}>{t('common.active')}</Tag>
                 ) : (
-                  <Tag color="default">Inactive</Tag>
+                  <Tag color="default">{t('common.inactive')}</Tag>
                 )}
               </div>
 
@@ -165,9 +167,9 @@ const Dashboard: React.FC = () => {
                   </div>
                 </Space>
                 {email?.enabled ? (
-                  <Tag color="green" icon={<CheckCircleOutlined />}>Active</Tag>
+                  <Tag color="green" icon={<CheckCircleOutlined />}>{t('common.active')}</Tag>
                 ) : (
-                  <Tag color="default">Inactive</Tag>
+                  <Tag color="default">{t('common.inactive')}</Tag>
                 )}
               </div>
 
@@ -180,9 +182,9 @@ const Dashboard: React.FC = () => {
                   </div>
                 </Space>
                 {slack?.enabled ? (
-                  <Tag color="green" icon={<CheckCircleOutlined />}>Active</Tag>
+                  <Tag color="green" icon={<CheckCircleOutlined />}>{t('common.active')}</Tag>
                 ) : (
-                  <Tag color="default">Inactive</Tag>
+                  <Tag color="default">{t('common.inactive')}</Tag>
                 )}
               </div>
 
@@ -195,9 +197,9 @@ const Dashboard: React.FC = () => {
                   </div>
                 </Space>
                 {log?.enabled ? (
-                  <Tag color="green" icon={<CheckCircleOutlined />}>Active</Tag>
+                  <Tag color="green" icon={<CheckCircleOutlined />}>{t('common.active')}</Tag>
                 ) : (
-                  <Tag color="default">Inactive</Tag>
+                  <Tag color="default">{t('common.inactive')}</Tag>
                 )}
               </div>
 
@@ -220,25 +222,25 @@ const Dashboard: React.FC = () => {
         </Col>
 
         <Col xs={24} md={12}>
-          <Card title="⏰ Bot Schedule">
+          <Card title={`⏰ ${t('dashboard.botSchedule')}`}>
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
               <Descriptions column={1} size="small" bordered>
-                <Descriptions.Item label="Last Check">
+                <Descriptions.Item label={t('dashboard.lastCheck')}>
                   {bot?.last_check ? (
-                    <Text>{new Date(bot.last_check * 1000).toLocaleString('vi-VN')}</Text>
+                    <Text>{new Date(bot.last_check * 1000).toLocaleString()}</Text>
                   ) : (
-                    <Text type="secondary">Chưa có</Text>
+                    <Text type="secondary">{t('common.noData')}</Text>
                   )}
                 </Descriptions.Item>
-                <Descriptions.Item label="Next Check">
+                <Descriptions.Item label={t('dashboard.nextCheck')}>
                   {bot?.next_scheduled_check ? (
-                    <Text>{new Date(bot.next_scheduled_check * 1000).toLocaleString('vi-VN')}</Text>
+                    <Text>{new Date(bot.next_scheduled_check * 1000).toLocaleString()}</Text>
                   ) : (
-                    <Text type="secondary">Chưa lên lịch</Text>
+                    <Text type="secondary">{t('common.noData')}</Text>
                   )}
                 </Descriptions.Item>
-                <Descriptions.Item label="Total Checked">
-                  <Tag color="blue">{bot?.total_issues_found || 0} issues found</Tag>
+                <Descriptions.Item label={t('dashboard.totalFound')}>
+                  <Tag color="blue">{bot?.total_issues_found || 0} {t('issues.title').toLowerCase()}</Tag>
                 </Descriptions.Item>
               </Descriptions>
             </Space>
@@ -249,7 +251,7 @@ const Dashboard: React.FC = () => {
       {/* Bot Status */}
       {bot && (
         <Alert
-          message={bot.is_running ? '✅ Security Monitor đang hoạt động' : '⚠️ Security Monitor đã dừng'}
+          message={bot.is_running ? `✅ ${t('dashboard.monitorStatus')}: ${t('dashboard.running')}` : `⚠️ ${t('dashboard.monitorStatus')}: ${t('dashboard.stopped')}`}
           type={bot.is_running ? 'success' : 'warning'}
           showIcon
           style={{ marginBottom: 24 }}
@@ -257,7 +259,7 @@ const Dashboard: React.FC = () => {
       )}
 
       {/* Recent Issues */}
-      <Card title="⚠️ Issues Gần đây" loading={loading}>
+      <Card title={`⚠️ ${t('dashboard.recentIssues')}`} loading={loading}>
         <Table
           columns={columns}
           dataSource={Array.isArray(recentIssues) ? recentIssues.slice(0, 5) : []}
