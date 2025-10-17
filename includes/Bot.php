@@ -200,11 +200,10 @@ class Bot extends MonitorAbstract
         // Chỉ auto start khi:
         // 1. Cấu hình auto_start = true
         // 2. Bot chưa đang chạy
-        // 3. Không phải AJAX request hoặc cron job
+        // 3. Không phải cron job (cho phép AJAX để UI có thể trigger)
         if (
             $this->getConfig('auto_start', true) &&
             !$this->isRunning() &&
-            !wp_doing_ajax() &&
             !wp_doing_cron()
         ) {
             $this->start();
