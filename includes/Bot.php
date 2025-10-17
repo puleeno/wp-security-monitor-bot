@@ -68,8 +68,9 @@ class Bot extends MonitorAbstract
         // Initialize security systems
         AccessControl::init();
 
-        // Auto start bot nếu cấu hình auto_start = true
-        $this->maybeAutoStart();
+        // NOTE: Không auto-start bot nữa
+        // User phải manually start qua UI hoặc API để đảm bảo control rõ ràng
+        // $this->maybeAutoStart();
     }
 
     public static function getInstance()
@@ -82,10 +83,15 @@ class Bot extends MonitorAbstract
 
     public function start(): void
     {
-        if ($this->isRunning) {
+        // Check DB flag - single source of truth
+        if ($this->isRunning()) {
             return;
         }
 
+        // Set DB flag FIRST
+        update_option('wp_security_monitor_bot_running', true);
+
+        // Sync property với DB
         $this->isRunning = true;
 
         // Schedule cron job để chạy kiểm tra định kỳ
@@ -94,17 +100,24 @@ class Bot extends MonitorAbstract
             wp_schedule_event(time(), $interval, $this->cronHook);
         }
 
-        update_option('wp_security_monitor_bot_running', true);
-
         do_action('wp_security_monitor_bot_started');
+
+        if (WP_DEBUG) {
+            error_log('[WP Security Monitor] Bot started on ' . current_time('mysql'));
+        }
     }
 
     public function stop(): void
     {
-        if (!$this->isRunning) {
+        // Check DB flag - single source of truth
+        if (!$this->isRunning()) {
             return;
         }
 
+        // Set DB flag FIRST
+        update_option('wp_security_monitor_bot_running', false);
+
+        // Sync property với DB
         $this->isRunning = false;
 
         // Unschedule cron job
@@ -113,15 +126,23 @@ class Bot extends MonitorAbstract
             wp_unschedule_event($timestamp, $this->cronHook);
         }
 
-        update_option('wp_security_monitor_bot_running', false);
-
         do_action('wp_security_monitor_bot_stopped');
+
+        if (WP_DEBUG) {
+            error_log('[WP Security Monitor] Bot stopped on ' . current_time('mysql'));
+        }
     }
 
     public function isRunning(): bool
     {
+        // DB option là single source of truth
+        // Property chỉ dùng để cache trong memory
         $saved = get_option('wp_security_monitor_bot_running', false);
-        return $this->isRunning || $saved;
+
+        // Sync property với DB để tránh inconsistency
+        $this->isRunning = (bool) $saved;
+
+        return (bool) $saved;
     }
 
     /**
@@ -558,6 +579,10 @@ class Bot extends MonitorAbstract
             'check_interval' => 'hourly'
         ]);
 
+        // Set flag OFF mặc định khi activate - user phải manually start
+        // Điều này đảm bảo bot không tự động chạy khi vừa cài đặt
+        add_option('wp_security_monitor_bot_running', false);
+
         // Tạo cron job cho security checks
         $cronHook = 'wp_security_monitor_bot_check';
         if (!wp_next_scheduled($cronHook)) {
@@ -663,6 +688,14 @@ class Bot extends MonitorAbstract
      */
     public function runCheck(): array
     {
+        // CHECK FLAG FIRST - Nếu bot đã bị dừng, không chạy check
+        if (!$this->isRunning()) {
+            if (WP_DEBUG) {
+                error_log('[WP Security Monitor] runCheck() skipped - Bot is stopped');
+            }
+            return [];
+        }
+
         // Đảm bảo channels được khởi tạo trước khi chạy check
         $this->ensureChannelsInitialized();
 
@@ -1573,6 +1606,11 @@ class Bot extends MonitorAbstract
      */
     public function handleSuspiciousRedirect(array $issue): void
     {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
         try {
             // Thêm backtrace vào issue data nếu có
             $issueData = $issue['details'];
@@ -1762,6 +1800,11 @@ class Bot extends MonitorAbstract
      */
     public function handleUserRegistration(array $userData): void
     {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
         try {
             if (WP_DEBUG) {
                 error_log("[Bot] Handling user registration: " . json_encode($userData));
@@ -1861,6 +1904,11 @@ class Bot extends MonitorAbstract
      */
     public function handleRealtimeFailedLogin(array $issueData): void
     {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
         try {
             if (WP_DEBUG) {
                 error_log("[Bot] Handling realtime failed login: " . json_encode($issueData));
@@ -1945,6 +1993,11 @@ class Bot extends MonitorAbstract
      */
     public function handleRealtimeBruteForce(array $issueData): void
     {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
         try {
             if (WP_DEBUG) {
                 error_log("[Bot] Handling realtime brute force: " . json_encode($issueData));
