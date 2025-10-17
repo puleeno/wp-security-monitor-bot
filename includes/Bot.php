@@ -23,6 +23,8 @@ use Puleeno\SecurityBot\WebMonitor\Issuers\SQLInjectionAttemptIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\BackdoorDetectionIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\RealtimeRedirectIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\FunctionOverrideIssuer;
+use Puleeno\SecurityBot\WebMonitor\Issuers\FatalErrorIssuer;
+use Puleeno\SecurityBot\WebMonitor\Issuers\PluginThemeUploadIssuer;
 use Puleeno\SecurityBot\WebMonitor\IssueManager;
 use Puleeno\SecurityBot\WebMonitor\Database\Schema;
 use Exception;
@@ -188,6 +190,12 @@ class Bot extends MonitorAbstract
 
         // Hook cho realtime brute force detection
         add_action('wp_security_monitor_realtime_brute_force', [$this, 'handleRealtimeBruteForce']);
+
+        // Hook cho fatal error detection
+        add_action('wp_security_monitor_fatal_error', [$this, 'handleFatalError']);
+
+        // Hook cho malicious upload detection
+        add_action('wp_security_monitor_malicious_upload', [$this, 'handleMaliciousUpload']);
     }
 
     /**
@@ -518,6 +526,30 @@ class Bot extends MonitorAbstract
         $overrideIssuer->configure($overrideConfig);
         if ($overrideIssuer->isEnabled()) {
             $this->addIssuer($overrideIssuer);
+        }
+
+        // Setup Fatal Error Issuer - REALTIME
+        $fatalErrorIssuer = new FatalErrorIssuer();
+        $fatalErrorConfig = $issuersConfig['fatal_error'] ?? [
+            'enabled' => true,
+            'monitor_levels' => ['error', 'warning'], // ['error', 'warning', 'notice']
+        ];
+        $fatalErrorIssuer->configure($fatalErrorConfig);
+        if ($fatalErrorIssuer->isEnabled()) {
+            $this->addIssuer($fatalErrorIssuer);
+        }
+
+        // Setup Plugin/Theme Upload Scanner - REALTIME
+        $uploadScannerIssuer = new PluginThemeUploadIssuer();
+        $uploadScannerConfig = $issuersConfig['plugin_theme_upload'] ?? [
+            'enabled' => true,
+            'max_files_per_scan' => 100,
+            'max_file_size' => 1048576, // 1MB
+            'block_suspicious_uploads' => true,
+        ];
+        $uploadScannerIssuer->configure($uploadScannerConfig);
+        if ($uploadScannerIssuer->isEnabled()) {
+            $this->addIssuer($uploadScannerIssuer);
         }
 
         if (WP_DEBUG) {
@@ -2134,5 +2166,265 @@ class Bot extends MonitorAbstract
         } else {
             wp_send_json_error(['message' => 'Không thể bỏ đánh dấu']);
         }
+    }
+
+    /**
+     * Xử lý fatal error detection
+     *
+     * @param array $errorData
+     * @return void
+     */
+    public function handleFatalError(array $errorData): void
+    {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
+        try {
+            if (WP_DEBUG) {
+                error_log("[Bot] Handling fatal error: " . json_encode($errorData));
+            }
+
+            // Log issue ngay lập tức
+            $issueId = $this->issueManager->recordIssue(
+                'fatal_error',
+                $errorData
+            );
+
+            // Chỉ gửi notification nếu đây là issue mới
+            if ($issueId && $this->isNewIssue($issueId)) {
+                // Tạo notification records cho tất cả channels active
+                $this->ensureChannelsInitialized();
+                $notificationManager = \Puleeno\SecurityBot\WebMonitor\NotificationManager::getInstance();
+
+                foreach ($this->channels as $channelName => $channel) {
+                    if ($channel->isAvailable()) {
+                        $message = $this->formatFatalErrorMessage($errorData);
+                        $context = [
+                            'issuer' => 'FatalErrorIssuer',
+                            'issue_data' => $errorData,
+                            'timestamp' => current_time('mysql'),
+                            'is_realtime' => true
+                        ];
+
+                        // Tạo notification record
+                        $notificationManager->queueNotification(
+                            $channelName,
+                            $issueId,
+                            $message,
+                            $context
+                        );
+
+                        // Gửi notification trực tiếp
+                        try {
+                            $result = $channel->send($message, $context);
+
+                            if ($result) {
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'sent'
+                                );
+                                error_log("WP Security Monitor: Fatal error notification sent via {$channelName}");
+                            } else {
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'failed',
+                                    'Failed to send notification'
+                                );
+                                error_log("WP Security Monitor: Failed to send fatal error notification via {$channelName}");
+                            }
+                        } catch (\Exception $e) {
+                            $notificationManager->updateNotificationStatus(
+                                $notificationManager->getLastInsertedNotificationId(),
+                                'failed',
+                                'Exception: ' . $e->getMessage()
+                            );
+                            error_log("WP Security Monitor: Error sending fatal error notification via {$channelName}: " . $e->getMessage());
+                        }
+                    }
+                }
+            } else if ($issueId) {
+                error_log("WP Security Monitor: Updated existing fatal error issue ID: {$issueId}");
+            }
+
+        } catch (\Exception $e) {
+            error_log('WP Security Monitor: Error handling fatal error - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Xử lý malicious upload detection
+     *
+     * @param array $uploadData
+     * @return void
+     */
+    public function handleMaliciousUpload(array $uploadData): void
+    {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
+        try {
+            if (WP_DEBUG) {
+                error_log("[Bot] Handling malicious upload: " . json_encode($uploadData));
+            }
+
+            // Log issue ngay lập tức
+            $issueId = $this->issueManager->recordIssue(
+                'malicious_upload',
+                $uploadData
+            );
+
+            // Chỉ gửi notification nếu đây là issue mới
+            if ($issueId && $this->isNewIssue($issueId)) {
+                // Tạo notification records cho tất cả channels active
+                $this->ensureChannelsInitialized();
+                $notificationManager = \Puleeno\SecurityBot\WebMonitor\NotificationManager::getInstance();
+
+                foreach ($this->channels as $channelName => $channel) {
+                    if ($channel->isAvailable()) {
+                        $message = $this->formatMaliciousUploadMessage($uploadData);
+                        $context = [
+                            'issuer' => 'PluginThemeUploadIssuer',
+                            'issue_data' => $uploadData,
+                            'timestamp' => current_time('mysql'),
+                            'is_realtime' => true
+                        ];
+
+                        // Tạo notification record
+                        $notificationManager->queueNotification(
+                            $channelName,
+                            $issueId,
+                            $message,
+                            $context
+                        );
+
+                        // Gửi notification trực tiếp
+                        try {
+                            $result = $channel->send($message, $context);
+
+                            if ($result) {
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'sent'
+                                );
+                                error_log("WP Security Monitor: Malicious upload notification sent via {$channelName}");
+                            } else {
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'failed',
+                                    'Failed to send notification'
+                                );
+                                error_log("WP Security Monitor: Failed to send malicious upload notification via {$channelName}");
+                            }
+                        } catch (\Exception $e) {
+                            $notificationManager->updateNotificationStatus(
+                                $notificationManager->getLastInsertedNotificationId(),
+                                'failed',
+                                'Exception: ' . $e->getMessage()
+                            );
+                            error_log("WP Security Monitor: Error sending malicious upload notification via {$channelName}: " . $e->getMessage());
+                        }
+                    }
+                }
+            } else if ($issueId) {
+                error_log("WP Security Monitor: Updated existing malicious upload issue ID: {$issueId}");
+            }
+
+        } catch (\Exception $e) {
+            error_log('WP Security Monitor: Error handling malicious upload - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Format fatal error message cho notification
+     *
+     * @param array $errorData
+     * @return string
+     */
+    private function formatFatalErrorMessage(array $errorData): string
+    {
+        $level = $errorData['level'] ?? 'error';
+        $severity = $errorData['severity'] ?? 'critical';
+        $title = $errorData['title'] ?? 'Fatal Error';
+        $description = $errorData['description'] ?? '';
+        $filePath = $errorData['file_path'] ?? '';
+        $lineNumber = $errorData['line_number'] ?? 0;
+
+        $icon = $level === 'error' ? '🚨' : ($level === 'warning' ? '⚠️' : '⚡');
+
+        $message = "{$icon} *CẢNH BÁO LỖI HỆ THỐNG*\n\n";
+        $message .= "*{$title}*\n\n";
+        $message .= "📝 _{$description}_\n\n";
+        $message .= "⚠️ Mức độ: *" . strtoupper($severity) . "*\n";
+        $message .= "🔢 Level: *{$level}*\n";
+
+        if (!empty($filePath)) {
+            $message .= "📁 File: `{$filePath}:{$lineNumber}`\n";
+        }
+
+        if (!empty($errorData['url'])) {
+            $message .= "🌐 URL: {$errorData['url']}\n";
+        }
+
+        $message .= "\n⏰ " . current_time('d/m/Y H:i:s');
+        $message .= "\n🌐 " . home_url();
+
+        return $message;
+    }
+
+    /**
+     * Format malicious upload message cho notification
+     *
+     * @param array $uploadData
+     * @return string
+     */
+    private function formatMaliciousUploadMessage(array $uploadData): string
+    {
+        $title = $uploadData['title'] ?? 'Malicious Upload Detected';
+        $description = $uploadData['description'] ?? '';
+        $itemType = $uploadData['item_type'] ?? 'file';
+        $itemName = $uploadData['item_name'] ?? 'unknown';
+
+        $message = "🚨 *CẢNH BÁO BẢO MẬT NGHIÊM TRỌNG*\n\n";
+        $message .= "☠️ *Phát hiện mã độc trong upload*\n\n";
+        $message .= "*{$title}*\n\n";
+        $message .= "📝 _{$description}_\n\n";
+        $message .= "📦 Loại: *" . ucfirst($itemType) . "*\n";
+        $message .= "📛 Tên: *{$itemName}*\n";
+        $message .= "⚠️ Mức độ: 🔴 *CRITICAL*\n\n";
+
+        if (isset($uploadData['findings']) && !empty($uploadData['findings'])) {
+            $findingsCount = is_array($uploadData['findings']) ? count($uploadData['findings']) : 0;
+            $message .= "🔍 Phát hiện: *{$findingsCount}* pattern(s) độc hại\n\n";
+
+            if ($findingsCount > 0 && $findingsCount <= 5) {
+                $message .= "⚠️ *Chi tiết patterns:*\n";
+                $i = 1;
+                foreach ($uploadData['findings'] as $file => $patterns) {
+                    if ($i > 5) break;
+                    $patternCount = is_array($patterns) ? count($patterns) : 0;
+                    $fileName = basename($file);
+                    $message .= "{$i}. `{$fileName}` - {$patternCount} pattern(s)\n";
+                    $i++;
+                }
+            }
+        }
+
+        if (isset($uploadData['username']) && !empty($uploadData['username'])) {
+            $message .= "\n👤 Upload bởi: *{$uploadData['username']}*\n";
+        }
+
+        if (isset($uploadData['ip_address']) && !empty($uploadData['ip_address'])) {
+            $message .= "🌐 IP: *{$uploadData['ip_address']}*\n";
+        }
+
+        $message .= "\n⏰ " . current_time('d/m/Y H:i:s');
+        $message .= "\n🌐 " . home_url();
+        $message .= "\n\n⚠️ *HÀNH ĐỘNG NGAY:* Kiểm tra và xóa {$itemType} này!";
+
+        return $message;
     }
 }
