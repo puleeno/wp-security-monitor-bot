@@ -159,6 +159,23 @@ class RestApi extends WP_REST_Controller
                 'permission_callback' => [$this, 'checkPermissions'],
             ],
         ]);
+
+        // Bot control endpoints
+        register_rest_route($this->namespace, '/bot/start', [
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'startBot'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
+
+        register_rest_route($this->namespace, '/bot/stop', [
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'stopBot'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
     }
 
     /**
@@ -830,6 +847,74 @@ class RestApi extends WP_REST_Controller
             'success' => false,
             'message' => 'Failed to reject domain',
         ], 200);
+    }
+
+    /**
+     * Start bot
+     *
+     * @return WP_REST_Response
+     */
+    public function startBot()
+    {
+        try {
+            $bot = Bot::getInstance();
+
+            if ($bot->isRunning()) {
+                return new WP_REST_Response([
+                    'success' => true,
+                    'message' => 'Bot đã đang chạy rồi',
+                    'is_running' => true,
+                ], 200);
+            }
+
+            $bot->start();
+
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Security Monitor Bot đã được khởi động thành công',
+                'is_running' => true,
+            ], 200);
+        } catch (\Exception $e) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'Lỗi khi khởi động bot: ' . $e->getMessage(),
+                'is_running' => false,
+            ], 200);
+        }
+    }
+
+    /**
+     * Stop bot
+     *
+     * @return WP_REST_Response
+     */
+    public function stopBot()
+    {
+        try {
+            $bot = Bot::getInstance();
+
+            if (!$bot->isRunning()) {
+                return new WP_REST_Response([
+                    'success' => true,
+                    'message' => 'Bot đã dừng rồi',
+                    'is_running' => false,
+                ], 200);
+            }
+
+            $bot->stop();
+
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Security Monitor Bot đã được dừng',
+                'is_running' => false,
+            ], 200);
+        } catch (\Exception $e) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'Lỗi khi dừng bot: ' . $e->getMessage(),
+                'is_running' => true,
+            ], 200);
+        }
     }
 }
 

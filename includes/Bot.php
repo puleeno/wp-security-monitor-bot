@@ -67,6 +67,9 @@ class Bot extends MonitorAbstract
 
         // Initialize security systems
         AccessControl::init();
+
+        // Auto start bot nếu cấu hình auto_start = true
+        $this->maybeAutoStart();
     }
 
     public static function getInstance()
@@ -185,6 +188,31 @@ class Bot extends MonitorAbstract
         ];
 
         $this->config = array_merge($defaultConfig, $this->config);
+    }
+
+    /**
+     * Tự động start bot nếu cấu hình auto_start = true
+     *
+     * @return void
+     */
+    private function maybeAutoStart(): void
+    {
+        // Chỉ auto start khi:
+        // 1. Cấu hình auto_start = true
+        // 2. Bot chưa đang chạy
+        // 3. Không phải AJAX request hoặc cron job
+        if (
+            $this->getConfig('auto_start', true) &&
+            !$this->isRunning() &&
+            !wp_doing_ajax() &&
+            !wp_doing_cron()
+        ) {
+            $this->start();
+
+            if (WP_DEBUG) {
+                error_log('[WP Security Monitor] Bot auto-started on ' . current_time('mysql'));
+            }
+        }
     }
 
     /**
