@@ -25,6 +25,7 @@ use Puleeno\SecurityBot\WebMonitor\Issuers\RealtimeRedirectIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\FunctionOverrideIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\FatalErrorIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\PluginThemeUploadIssuer;
+use Puleeno\SecurityBot\WebMonitor\Issuers\PerformanceIssuer;
 use Puleeno\SecurityBot\WebMonitor\IssueManager;
 use Puleeno\SecurityBot\WebMonitor\Database\Schema;
 use Exception;
@@ -196,6 +197,9 @@ class Bot extends MonitorAbstract
 
         // Hook cho malicious upload detection
         add_action('wp_security_monitor_malicious_upload', [$this, 'handleMaliciousUpload']);
+
+        // Hook cho slow performance detection
+        add_action('wp_security_monitor_slow_performance', [$this, 'handleSlowPerformance']);
     }
 
     /**
@@ -550,6 +554,19 @@ class Bot extends MonitorAbstract
         $uploadScannerIssuer->configure($uploadScannerConfig);
         if ($uploadScannerIssuer->isEnabled()) {
             $this->addIssuer($uploadScannerIssuer);
+        }
+
+        // Setup Performance Monitor - REALTIME
+        $performanceIssuer = new PerformanceIssuer();
+        $performanceConfig = $issuersConfig['performance_monitor'] ?? [
+            'enabled' => true,
+            'threshold' => 30, // seconds
+            'memory_threshold' => 134217728, // 128MB
+            'track_queries' => true,
+        ];
+        $performanceIssuer->configure($performanceConfig);
+        if ($performanceIssuer->isEnabled()) {
+            $this->addIssuer($performanceIssuer);
         }
 
         if (WP_DEBUG) {
@@ -2424,6 +2441,167 @@ class Bot extends MonitorAbstract
         $message .= "\n⏰ " . current_time('d/m/Y H:i:s');
         $message .= "\n🌐 " . home_url();
         $message .= "\n\n⚠️ *HÀNH ĐỘNG NGAY:* Kiểm tra và xóa {$itemType} này!";
+
+        return $message;
+    }
+
+    /**
+     * Xử lý slow performance detection
+     *
+     * @param array $performanceData
+     * @return void
+     */
+    public function handleSlowPerformance(array $performanceData): void
+    {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
+        try {
+            if (WP_DEBUG) {
+                error_log("[Bot] Handling slow performance: " . json_encode($performanceData));
+            }
+
+            // Log issue ngay lập tức
+            $issueId = $this->issueManager->recordIssue(
+                'slow_performance',
+                $performanceData
+            );
+
+            // Chỉ gửi notification nếu đây là issue mới
+            if ($issueId && $this->isNewIssue($issueId)) {
+                // Tạo notification records cho tất cả channels active
+                $this->ensureChannelsInitialized();
+                $notificationManager = \Puleeno\SecurityBot\WebMonitor\NotificationManager::getInstance();
+
+                foreach ($this->channels as $channelName => $channel) {
+                    if ($channel->isAvailable()) {
+                        $message = $this->formatSlowPerformanceMessage($performanceData);
+                        $context = [
+                            'issuer' => 'PerformanceIssuer',
+                            'issue_data' => $performanceData,
+                            'timestamp' => current_time('mysql'),
+                            'is_realtime' => true
+                        ];
+
+                        // Tạo notification record
+                        $notificationManager->queueNotification(
+                            $channelName,
+                            $issueId,
+                            $message,
+                            $context
+                        );
+
+                        // Gửi notification trực tiếp
+                        try {
+                            $result = $channel->send($message, $context);
+
+                            if ($result) {
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'sent'
+                                );
+                                error_log("WP Security Monitor: Slow performance notification sent via {$channelName}");
+                            } else {
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'failed',
+                                    'Failed to send notification'
+                                );
+                                error_log("WP Security Monitor: Failed to send slow performance notification via {$channelName}");
+                            }
+                        } catch (\Exception $e) {
+                            $notificationManager->updateNotificationStatus(
+                                $notificationManager->getLastInsertedNotificationId(),
+                                'failed',
+                                'Exception: ' . $e->getMessage()
+                            );
+                            error_log("WP Security Monitor: Error sending slow performance notification via {$channelName}: " . $e->getMessage());
+                        }
+                    }
+                }
+            } else if ($issueId) {
+                error_log("WP Security Monitor: Updated existing slow performance issue ID: {$issueId}");
+            }
+
+        } catch (\Exception $e) {
+            error_log('WP Security Monitor: Error handling slow performance - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Format slow performance message cho notification
+     *
+     * @param array $performanceData
+     * @return string
+     */
+    private function formatSlowPerformanceMessage(array $performanceData): string
+    {
+        $executionTime = $performanceData['execution_time'] ?? 0;
+        $threshold = $performanceData['threshold'] ?? 30;
+        $severity = $performanceData['severity'] ?? 'medium';
+        $url = $performanceData['url'] ?? '';
+        $method = $performanceData['method'] ?? 'GET';
+
+        $icon = $severity === 'critical' ? '🔴' : ($severity === 'high' ? '🟠' : '🟡');
+
+        $message = "{$icon} *CẢNH BÁO HIỆU NĂNG*\n\n";
+        $message .= "🐌 *Request xử lý quá chậm*\n\n";
+        $message .= "⏱️ Thời gian: *{$executionTime}s* (ngưỡng: {$threshold}s)\n";
+        $message .= "⚠️ Mức độ: *" . strtoupper($severity) . "*\n\n";
+
+        // Request info
+        $message .= "🌐 *Request Details:*\n";
+        $message .= "• Method: *{$method}*\n";
+        $message .= "• URL: `{$url}`\n";
+
+        // Memory usage
+        if (isset($performanceData['memory_used'])) {
+            $message .= "• Memory: {$performanceData['memory_used']}";
+            if (isset($performanceData['peak_memory'])) {
+                $message .= " (peak: {$performanceData['peak_memory']})";
+            }
+            $message .= "\n";
+        }
+
+        // Queries info
+        if (isset($performanceData['total_queries']) && $performanceData['total_queries'] > 0) {
+            $message .= "• Queries: {$performanceData['total_queries']} queries\n";
+
+            if (isset($performanceData['slow_queries']) && !empty($performanceData['slow_queries'])) {
+                $slowCount = count($performanceData['slow_queries']);
+                $message .= "• Slow queries (>1s): *{$slowCount}*\n";
+            }
+        }
+
+        // Server load
+        if (isset($performanceData['server_load']) && !empty($performanceData['server_load'])) {
+            $load = $performanceData['server_load'];
+            $message .= "• Server load: {$load['1min']} / {$load['5min']} / {$load['15min']}\n";
+        }
+
+        // Backtrace (top 5)
+        if (isset($performanceData['backtrace']) && !empty($performanceData['backtrace'])) {
+            $message .= "\n🔍 *Backtrace (Top 5):*\n";
+            $traces = array_slice($performanceData['backtrace'], 0, 5);
+            foreach ($traces as $trace) {
+                $message .= "```\n{$trace}\n```\n";
+            }
+        }
+
+        // Slow queries detail (top 3)
+        if (isset($performanceData['slow_queries']) && !empty($performanceData['slow_queries'])) {
+            $message .= "\n⚡ *Slow Queries (Top 3):*\n";
+            $slowQueries = array_slice($performanceData['slow_queries'], 0, 3);
+            foreach ($slowQueries as $i => $query) {
+                $message .= ($i + 1) . ". [{$query['time']}s] `{$query['query']}`\n";
+            }
+        }
+
+        $message .= "\n⏰ " . current_time('d/m/Y H:i:s');
+        $message .= "\n🌐 " . home_url();
+        $message .= "\n\n💡 *Gợi ý:* Kiểm tra backtrace và queries để tối ưu performance";
 
         return $message;
     }

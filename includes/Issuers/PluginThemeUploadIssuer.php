@@ -12,6 +12,16 @@ use Puleeno\SecurityBot\WebMonitor\Abstracts\RealtimeIssuerAbstract;
 class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
 {
     /**
+     * @var string
+     */
+    protected $name = 'Plugin/Theme Upload Scanner';
+
+    /**
+     * @var string
+     */
+    protected $description = 'Scans uploaded plugins and themes for malicious code';
+
+    /**
      * @var array Malicious patterns cần detect
      */
     private $maliciousPatterns = [
@@ -55,10 +65,6 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
 
     public function __construct()
     {
-        parent::__construct();
-        $this->name = 'Plugin/Theme Upload Scanner';
-        $this->description = 'Scans uploaded plugins and themes for malicious code';
-
         // Register hooks
         $this->registerHooks();
     }
@@ -146,7 +152,15 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
      */
     public function scanUploadedFile($file)
     {
+        // Debug log
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[WP Security Monitor] scanUploadedFile called for: ' . ($file['name'] ?? 'unknown'));
+        }
+
         if (!$this->isEnabled()) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[WP Security Monitor] PluginThemeUploadIssuer is disabled');
+            }
             return $file;
         }
 
@@ -156,24 +170,57 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
         if (in_array(strtolower($extension), $this->suspiciousExtensions)) {
             $tmpPath = $file['tmp_name'];
 
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[WP Security Monitor] Scanning PHP file: ' . $file['name']);
+            }
+
+            // Check file size
+            $maxSize = $this->getConfig('max_file_size', 1048576); // 1MB
+            if ($file['size'] > $maxSize) {
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('[WP Security Monitor] File too large, skipping: ' . $file['name']);
+                }
+                return $file;
+            }
+
             if (file_exists($tmpPath)) {
                 $findings = $this->scanFile($tmpPath);
 
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('[WP Security Monitor] Scan results: ' . count($findings) . ' findings for ' . $file['name']);
+                }
+
                 if (!empty($findings)) {
+                    if (defined('WP_DEBUG') && WP_DEBUG) {
+                        error_log('[WP Security Monitor] MALICIOUS FILE DETECTED: ' . $file['name'] . ' - Findings: ' . json_encode($findings));
+                    }
+
                     $this->reportIssue([
                         'type' => 'malicious_upload',
                         'severity' => 'critical',
-                        'title' => 'Malicious File Upload Detected',
-                        'description' => 'Uploaded file contains suspicious code patterns',
+                        'title' => 'Malicious File Upload Detected: ' . $file['name'],
+                        'description' => sprintf(
+                            'File "%s" contains %d malicious patterns',
+                            $file['name'],
+                            count($findings)
+                        ),
                         'file_name' => $file['name'],
+                        'file_size' => $file['size'],
                         'file_type' => $extension,
                         'findings' => $findings,
                         'upload_dir' => dirname($tmpPath),
+                        'content_preview' => substr(file_get_contents($tmpPath), 0, 500),
                     ]);
 
-                    // Block upload
-                    $file['error'] = 'File upload blocked: Malicious code detected';
+                    // Block upload if enabled
+                    if ($this->getConfig('block_suspicious_uploads', true)) {
+                        $file['error'] = 'File upload blocked: Malicious code detected by security monitor';
+                    }
                 }
+            }
+        } else {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[WP Security Monitor] File not scanned (not PHP): ' . $file['name']);
             }
         }
 
@@ -287,6 +334,7 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
         return substr_count(substr($content, 0, $pos), "\n") + 1;
     }
 
+
     /**
      * Report issue
      */
@@ -301,6 +349,14 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
 
         // Trigger action để Bot xử lý
         do_action('wp_security_monitor_malicious_upload', $issueData);
+    }
+
+    /**
+     * Get issuer name
+     */
+    public function getName(): string
+    {
+        return $this->name;
     }
 
     /**

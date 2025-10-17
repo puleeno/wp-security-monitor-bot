@@ -1,7 +1,7 @@
 <?php
 namespace Puleeno\SecurityBot\WebMonitor\Issuers;
 
-use Puleeno\SecurityBot\WebMonitor\Abstracts\IssuerAbstract;
+use Puleeno\SecurityBot\WebMonitor\Abstracts\RealtimeIssuerAbstract;
 
 /**
  * Fatal Error Issuer
@@ -9,8 +9,18 @@ use Puleeno\SecurityBot\WebMonitor\Abstracts\IssuerAbstract;
  * Detects và report WordPress fatal errors, warnings, notices
  * Hook vào WordPress error handler và shutdown function
  */
-class FatalErrorIssuer extends IssuerAbstract
+class FatalErrorIssuer extends RealtimeIssuerAbstract
 {
+    /**
+     * @var string
+     */
+    protected $name = 'Fatal Error Monitor';
+
+    /**
+     * @var string
+     */
+    protected $description = 'Monitors WordPress fatal errors, warnings, and notices';
+
     /**
      * @var array Lưu các errors đã detect trong request hiện tại
      */
@@ -23,10 +33,6 @@ class FatalErrorIssuer extends IssuerAbstract
 
     public function __construct()
     {
-        parent::__construct();
-        $this->name = 'Fatal Error Monitor';
-        $this->description = 'Monitors WordPress fatal errors, warnings, and notices';
-
         // Register error handlers
         $this->registerErrorHandlers();
     }
@@ -154,6 +160,14 @@ class FatalErrorIssuer extends IssuerAbstract
             // Call original handler
             return call_user_func($handler, $message, $title, $args);
         };
+    }
+
+    /**
+     * Get issuer name
+     */
+    public function getName(): string
+    {
+        return $this->name;
     }
 
     /**

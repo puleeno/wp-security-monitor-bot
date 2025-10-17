@@ -176,6 +176,20 @@ class RestApi extends WP_REST_Controller
                 'permission_callback' => [$this, 'checkPermissions'],
             ],
         ]);
+
+        // Issuer config endpoints
+        register_rest_route($this->namespace, '/issuers/config', [
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [$this, 'getIssuersConfig'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'updateIssuersConfig'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
     }
 
     /**
@@ -915,6 +929,77 @@ class RestApi extends WP_REST_Controller
                 'is_running' => true,
             ], 200);
         }
+    }
+
+    /**
+     * Get issuers config
+     *
+     * @return WP_REST_Response
+     */
+    public function getIssuersConfig()
+    {
+        $config = get_option('wp_security_monitor_issuers_config', []);
+
+        // Default configs cho các issuers
+        $defaults = [
+            'fatal_error' => [
+                'enabled' => true,
+                'monitor_levels' => ['error', 'warning'],
+            ],
+            'plugin_theme_upload' => [
+                'enabled' => true,
+                'max_files_per_scan' => 100,
+                'max_file_size' => 1048576,
+                'block_suspicious_uploads' => true,
+            ],
+            'performance_monitor' => [
+                'enabled' => true,
+                'threshold' => 30,
+                'memory_threshold' => 134217728,
+                'track_queries' => true,
+            ],
+        ];
+
+        // Merge với defaults
+        $config = array_merge($defaults, $config);
+
+        return new WP_REST_Response([
+            'config' => $config,
+            'savequeries_enabled' => defined('SAVEQUERIES') && SAVEQUERIES,
+        ], 200);
+    }
+
+    /**
+     * Update issuers config
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function updateIssuersConfig(WP_REST_Request $request)
+    {
+        $newConfig = $request->get_json_params();
+
+        if (empty($newConfig)) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'No config data provided',
+            ], 400);
+        }
+
+        // Get current config
+        $currentConfig = get_option('wp_security_monitor_issuers_config', []);
+
+        // Merge với config mới
+        $updatedConfig = array_merge($currentConfig, $newConfig);
+
+        // Save config
+        update_option('wp_security_monitor_issuers_config', $updatedConfig);
+
+        return new WP_REST_Response([
+            'success' => true,
+            'message' => 'Issuer config updated successfully',
+            'config' => $updatedConfig,
+        ], 200);
     }
 }
 

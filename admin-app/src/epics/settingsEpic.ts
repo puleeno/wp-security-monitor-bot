@@ -10,10 +10,17 @@ import {
   updateSettings,
   updateSettingsSuccess,
   updateSettingsFailure,
+  fetchIssuersConfig,
+  fetchIssuersConfigSuccess,
+  fetchIssuersConfigFailure,
+  updateIssuersConfig,
+  updateIssuersConfigSuccess,
+  updateIssuersConfigFailure,
 } from '../reducers/settingsReducer';
 import { addNotification } from '../reducers/uiReducer';
 
 const BASE_ROUTE = 'wp-security-monitor/v1/settings';
+const ISSUERS_ROUTE = 'wp-security-monitor/v1/issuers/config';
 
 // Fetch settings epic
 const fetchSettingsEpic: Epic = (action$) =>
@@ -64,4 +71,58 @@ const updateSettingsEpic: Epic = (action$) =>
     )
   );
 
-export const settingsEpic = combineEpics(fetchSettingsEpic, updateSettingsEpic);
+// Fetch issuers config epic
+const fetchIssuersConfigEpic: Epic = (action$) =>
+  action$.pipe(
+    filter(fetchIssuersConfig.match),
+    switchMap(() =>
+      ajax({
+        url: buildUrl(ISSUERS_ROUTE),
+        method: 'GET',
+        headers: getApiHeaders(),
+      }).pipe(
+        map((response: any) => fetchIssuersConfigSuccess(response.response)),
+        catchError((error) => of(fetchIssuersConfigFailure(error.message || 'Không thể tải issuer config')))
+      )
+    )
+  );
+
+// Update issuers config epic
+const updateIssuersConfigEpic: Epic = (action$) =>
+  action$.pipe(
+    filter(updateIssuersConfig.match),
+    switchMap((action) =>
+      ajax({
+        url: buildUrl(ISSUERS_ROUTE),
+        method: 'POST',
+        headers: getApiHeaders(),
+        body: action.payload,
+      }).pipe(
+        mergeMap((response: any) =>
+          of(
+            updateIssuersConfigSuccess(response.response.config),
+            addNotification({
+              type: 'success',
+              message: 'Issuer config đã được lưu thành công',
+            })
+          )
+        ),
+        catchError((error) =>
+          of(
+            updateIssuersConfigFailure(error.message || 'Không thể lưu issuer config'),
+            addNotification({
+              type: 'error',
+              message: `Lỗi: ${error.message}`,
+            })
+          )
+        )
+      )
+    )
+  );
+
+export const settingsEpic = combineEpics(
+  fetchSettingsEpic,
+  updateSettingsEpic,
+  fetchIssuersConfigEpic,
+  updateIssuersConfigEpic
+);

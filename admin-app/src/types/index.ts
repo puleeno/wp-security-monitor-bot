@@ -104,3 +104,33 @@ export interface ApiResponse<T = any> {
   message?: string;
 }
 
+export interface IssuerConfig {
+  enabled: boolean;
+  [key: string]: any;
+}
+
+export interface IssuersConfig {
+  fatal_error?: {
+    enabled: boolean;
+    monitor_levels: string[];
+  };
+  plugin_theme_upload?: {
+    enabled: boolean;
+    max_files_per_scan: number;
+    max_file_size: number;
+    block_suspicious_uploads: boolean;
+  };
+  performance_monitor?: {
+    enabled: boolean;
+    threshold: number;
+    memory_threshold: number;
+    track_queries: boolean;
+  };
+  [key: string]: IssuerConfig | undefined;
+}
+
+export interface IssuersConfigResponse {
+  config: IssuersConfig;
+  savequeries_enabled: boolean;
+}
+
