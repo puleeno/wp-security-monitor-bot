@@ -420,16 +420,18 @@ class Bot extends MonitorAbstract
             $this->addIssuer($evalIssuer);
         }
 
-        // Setup Git File Changes Issuer (nếu Git available)
-        $gitIssuer = new GitFileChangesIssuer();
-        $gitConfig = $issuersConfig['git_file_changes'] ?? [
-            'enabled' => true,
-            'check_interval' => 300,
-            'max_files_per_alert' => 10
-        ];
-        $gitIssuer->configure($gitConfig);
-        if ($gitIssuer->isEnabled()) {
-            $this->addIssuer($gitIssuer);
+        // Setup Git File Changes Issuer (chỉ nếu shell functions available)
+        if (GitFileChangesIssuer::areShellFunctionsEnabled()) {
+            $gitIssuer = new GitFileChangesIssuer();
+            $gitConfig = $issuersConfig['git_file_changes'] ?? [
+                'enabled' => true,
+                'check_interval' => 300,
+                'max_files_per_alert' => 10
+            ];
+            $gitIssuer->configure($gitConfig);
+            if ($gitIssuer->isEnabled()) {
+                $this->addIssuer($gitIssuer);
+            }
         }
 
         // Setup SQL Injection Attempt Issuer - HIGHEST PRIORITY

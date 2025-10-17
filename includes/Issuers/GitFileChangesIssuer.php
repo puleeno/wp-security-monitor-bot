@@ -53,8 +53,42 @@ class GitFileChangesIssuer implements IssuerInterface
      */
     private $lastCheckOptionKey = 'wp_security_monitor_git_last_check';
 
+    /**
+     * Check if shell functions are available (static method)
+     */
+    public static function areShellFunctionsEnabled(): bool
+    {
+        $requiredFunctions = ['shell_exec', 'escapeshellcmd', 'escapeshellarg'];
+
+        foreach ($requiredFunctions as $function) {
+            if (!\function_exists($function)) {
+                return false;
+            }
+
+            // Check if function is disabled in php.ini
+            $disabled = \ini_get('disable_functions');
+            if (!empty($disabled)) {
+                $disabledArray = \array_map('trim', \explode(',', $disabled));
+                if (\in_array($function, $disabledArray)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     public function __construct()
     {
+        // Check if required functions are available
+        if (!self::areShellFunctionsEnabled()) {
+            $this->config['enabled'] = false;
+            if (WP_DEBUG) {
+                \error_log('[WP Security Monitor] GitFileChangesIssuer disabled: Required shell functions are not available or disabled');
+            }
+            return;
+        }
+
         $this->gitPath = $this->findGitPath();
     }
 
@@ -137,10 +171,10 @@ class GitFileChangesIssuer implements IssuerInterface
      */
     private function testGitCommand(string $gitPath): bool
     {
-        $command = escapeshellcmd($gitPath) . ' --version 2>&1';
-        $output = shell_exec($command);
+        $command = \escapeshellcmd($gitPath) . ' --version 2>&1';
+        $output = \shell_exec($command);
 
-        return $output && strpos($output, 'git version') !== false;
+        return $output && \strpos($output, 'git version') !== false;
     }
 
     /**
@@ -163,13 +197,13 @@ class GitFileChangesIssuer implements IssuerInterface
         }
 
         // Test git command trong ABSPATH
-        $command = sprintf(
+        $command = \sprintf(
             'cd %s && %s rev-parse --is-inside-work-tree 2>/dev/null',
-            escapeshellarg(ABSPATH),
-            escapeshellcmd($this->gitPath)
+            \escapeshellarg(ABSPATH),
+            \escapeshellcmd($this->gitPath)
         );
 
-        $output = shell_exec($command);
+        $output = \shell_exec($command);
 
         // Git trả về "true" nếu trong working tree
         return trim($output ?? '') === 'true';
@@ -183,14 +217,14 @@ class GitFileChangesIssuer implements IssuerInterface
         $sinceDate = date('Y-m-d H:i:s', $since);
 
         // Git command để lấy files thay đổi
-        $command = sprintf(
+        $command = \sprintf(
             'cd %s && %s log --since="%s" --name-status --pretty=format:"COMMIT:%%H:%%s:%%an:%%ad" --date=iso',
-            escapeshellarg(ABSPATH),
-            escapeshellcmd($this->gitPath),
+            \escapeshellarg(ABSPATH),
+            \escapeshellcmd($this->gitPath),
             $sinceDate
         );
 
-        $output = shell_exec($command . ' 2>&1');
+        $output = \shell_exec($command . ' 2>&1');
 
         if (!$output) {
             return [];
@@ -216,8 +250,8 @@ class GitFileChangesIssuer implements IssuerInterface
             }
 
             // Parse commit line
-            if (strpos($line, 'COMMIT:') === 0) {
-                $parts = explode(':', $line, 5);
+            if (\strpos($line, 'COMMIT:') === 0) {
+                $parts = \explode(':', $line, 5);
                 if (count($parts) >= 5) {
                     $currentCommit = [
                         'hash' => $parts[1],
@@ -231,7 +265,7 @@ class GitFileChangesIssuer implements IssuerInterface
             }
 
             // Parse file change line (M, A, D followed by filename)
-            if ($currentCommit && preg_match('/^([AMD])\s+(.+)$/', $line, $matches)) {
+            if ($currentCommit && \preg_match('/^([AMD])\s+(.+)$/', $line, $matches)) {
                 $status = $matches[1];
                 $filename = $matches[2];
 
@@ -262,7 +296,7 @@ class GitFileChangesIssuer implements IssuerInterface
     private function shouldExcludeFile(string $filename): bool
     {
         foreach ($this->config['exclude_patterns'] as $pattern) {
-            if (fnmatch($pattern, $filename)) {
+            if (\fnmatch($pattern, $filename)) {
                 return true;
             }
         }
