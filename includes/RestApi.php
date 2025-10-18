@@ -348,8 +348,14 @@ class RestApi extends WP_REST_Controller
     private function deleteIssue(int $issueId): bool
     {
         global $wpdb;
-        $table = $wpdb->prefix . \Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_ISSUES;
-        return $wpdb->delete($table, [ 'id' => $issueId ], [ '%d' ]) !== false;
+        $issuesTable = $wpdb->prefix . \Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_ISSUES;
+        $notificationsTable = $wpdb->prefix . \Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_NOTIFICATIONS;
+
+        // Xóa notifications liên quan trước (phòng khi FK chưa được tạo)
+        $wpdb->delete($notificationsTable, [ 'issue_id' => $issueId ], [ '%d' ]);
+
+        // Xóa issue
+        return $wpdb->delete($issuesTable, [ 'id' => $issueId ], [ '%d' ]) !== false;
     }
 
     private function getIssueRow(int $issueId)
