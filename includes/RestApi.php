@@ -160,6 +160,15 @@ class RestApi extends WP_REST_Controller
             ],
         ]);
 
+        // Approve redirect by domain name
+        register_rest_route($this->namespace, '/redirects/(?P<domain>[a-zA-Z0-9\-\.]+)/approve', [
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'approveRedirectByDomain'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
+
         // Reject redirect by domain name
         register_rest_route($this->namespace, '/redirects/(?P<domain>[a-zA-Z0-9\-\.]+)/reject', [
             [
@@ -870,6 +879,43 @@ class RestApi extends WP_REST_Controller
             'success' => false,
             'message' => 'Failed to reject domain',
         ], 200);
+    }
+
+    /**
+     * Approve redirect by domain name
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function approveRedirectByDomain(WP_REST_Request $request)
+    {
+        global $wpdb;
+        $domain = $request->get_param('domain');
+        $table = $wpdb->prefix . 'security_monitor_redirect_domains';
+
+        $updated = $wpdb->update(
+            $table,
+            [
+                'status' => 'approved',
+                'approved_by' => get_current_user_id(),
+                'approved_at' => current_time('mysql')
+            ],
+            ['domain' => $domain],
+            ['%s', '%d', '%s'],
+            ['%s']
+        );
+
+        if ($updated) {
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => sprintf('Domain "%s" approved successfully', $domain),
+            ], 200);
+        }
+
+        return new WP_REST_Response([
+            'success' => false,
+            'message' => sprintf('Failed to approve domain "%s". Domain may not exist.', $domain),
+        ], 400);
     }
 
     /**
