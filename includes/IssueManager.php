@@ -234,10 +234,36 @@ class IssueManager
             ARRAY_A
         );
 
-        // Decode JSON fields
+        // Decode JSON fields và chuẩn hoá kiểu dữ liệu (tránh chuỗi "0"/"1" khiến frontend hiểu sai)
         foreach ($issues as &$issue) {
+            // JSON fields
             $issue['raw_data'] = is_array($issue['raw_data']) ? $issue['raw_data'] : json_decode($issue['raw_data'], true);
             $issue['metadata'] = is_array($issue['metadata']) ? $issue['metadata'] : json_decode($issue['metadata'], true);
+
+            // Numeric fields
+            if (isset($issue['id'])) {
+                $issue['id'] = (int) $issue['id'];
+            }
+            if (isset($issue['detection_count'])) {
+                $issue['detection_count'] = (int) $issue['detection_count'];
+            }
+
+            // Boolean-like tinyint fields may come back as strings "0"/"1" from MySQL
+            if (isset($issue['viewed'])) {
+                $issue['viewed'] = (bool) ((int) $issue['viewed']);
+            }
+            if (isset($issue['is_ignored'])) {
+                $issue['is_ignored'] = (bool) ((int) $issue['is_ignored']);
+            }
+
+            // Nullable numeric fields
+            foreach (['viewed_by', 'ignored_by', 'resolved_by'] as $numericNullableField) {
+                if (array_key_exists($numericNullableField, $issue)) {
+                    $issue[$numericNullableField] = is_null($issue[$numericNullableField])
+                        ? null
+                        : (int) $issue[$numericNullableField];
+                }
+            }
         }
 
         return [

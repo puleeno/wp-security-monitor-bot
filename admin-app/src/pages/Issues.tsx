@@ -197,57 +197,66 @@ const Issues: React.FC = () => {
       title: 'Actions',
       key: 'actions',
       width: 280,
-      render: (_: any, record: Issue) => (
-        <Space wrap size="small">
-          <Button
-            size="small"
-            type={record.viewed ? 'default' : 'primary'}
-            icon={<EyeOutlined />}
-            onClick={() => handleMarkViewed(record.id, record.viewed)}
-          >
-            {record.viewed ? t('issues.viewed') : t('issues.markViewed')}
-          </Button>
+      render: (_: any, record: Issue) => {
+        const isProcessed = record.viewed || record.is_ignored || record.status === 'resolved';
+        return (
+          <Space wrap size="small">
+            {/* Always show Details */}
+            <Button
+              size="small"
+              onClick={() => {
+                setSelectedIssue(record);
+                setDetailsVisible(true);
+              }}
+            >
+              {t('issues.details')}
+            </Button>
 
-          <Button
-            size="small"
-            onClick={() => {
-              setSelectedIssue(record);
-              setDetailsVisible(true);
-            }}
-          >
-            {t('issues.details')}
-          </Button>
-
-          {!record.is_ignored && (
-            <>
-              <Button
-                size="small"
-                icon={<StopOutlined />}
-                onClick={() => {
-                  setSelectedIssue(record);
-                  setIgnoreModal(true);
-                }}
-              >
-                {t('issues.ignore')}
-              </Button>
-
-              {record.status !== 'resolved' && (
+            {/* Only show action buttons when NOT processed yet */}
+            {!isProcessed && (
+              <>
                 <Button
                   size="small"
-                  type="primary"
-                  icon={<CheckOutlined />}
-                  onClick={() => {
-                    setSelectedIssue(record);
-                    setResolveModal(true);
-                  }}
+                  type={record.viewed ? 'default' : 'primary'}
+                  icon={<EyeOutlined />}
+                  onClick={() => handleMarkViewed(record.id, record.viewed)}
                 >
-                  {t('issues.resolve')}
+                  {record.viewed ? t('issues.viewed') : t('issues.markViewed')}
                 </Button>
-              )}
-            </>
-          )}
-        </Space>
-      ),
+
+                {!record.is_ignored && (
+                  <>
+                    <Button
+                      size="small"
+                      icon={<StopOutlined />}
+                      onClick={() => {
+                        setSelectedIssue(record);
+                        setIgnoreModal(true);
+                      }}
+                    >
+                      {t('issues.ignore')}
+                    </Button>
+
+                    {record.status !== 'resolved' && (
+                      <Button
+                        size="small"
+                        type="primary"
+                        icon={<CheckOutlined />}
+                        onClick={() => {
+                          setSelectedIssue(record);
+                          setResolveModal(true);
+                        }}
+                      >
+                        {t('issues.resolve')}
+                      </Button>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
