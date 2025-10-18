@@ -1,71 +1,77 @@
 <?php
+
 namespace Puleeno\SecurityBot\WebMonitor\Issuers;
 
 use Puleeno\SecurityBot\WebMonitor\Abstracts\RealtimeIssuerAbstract;
 
 /**
- * Plugin/Theme Upload Scanner Issuer
+ * Plugin/Theme Upload Security Issuer
  *
- * Detects và scan plugins/themes khi được upload
- * Tìm malicious code patterns: error_reporting(0), set_time_limit(0), str_rot13, shell functions
+ * Scans uploaded plugins and themes for malicious code patterns
+ * Blocks installation if malware is detected
  */
 class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
 {
-    /**
-     * @var string
-     */
     protected $name = 'Plugin/Theme Upload Scanner';
+    protected $description = 'Scans uploaded plugins and themes for malicious code patterns';
 
     /**
-     * @var string
-     */
-    protected $description = 'Scans uploaded plugins and themes for malicious code';
-
-    /**
-     * @var array Malicious patterns cần detect
+     * Malicious code patterns to detect
      */
     private $maliciousPatterns = [
-        'error_reporting\s*\(\s*0\s*\)' => 'Error reporting disabled',
-        'set_time_limit\s*\(\s*0\s*\)' => 'Time limit disabled',
-        'str_rot13' => 'ROT13 encoding detected',
-        'base64_decode' => 'Base64 decode detected',
-        'eval\s*\(' => 'Eval function detected',
-        'system\s*\(' => 'System command execution',
-        'exec\s*\(' => 'Exec command execution',
-        'shell_exec' => 'Shell execution detected',
-        'passthru' => 'Passthru function detected',
-        'proc_open' => 'Process open detected',
-        'popen' => 'Pipe open detected',
-        'curl_exec' => 'cURL execution detected',
-        'curl_multi_exec' => 'cURL multi execution',
-        'parse_ini_file' => 'INI file parsing',
-        'show_source' => 'Source code disclosure',
-        'symlink' => 'Symbolic link creation',
-        'link' => 'Hard link creation',
-        '@\$_(GET|POST|REQUEST|COOKIE|SERVER)\[' => 'Direct superglobal access',
-        'file_get_contents\s*\(\s*[\'"]php:\/\/input' => 'PHP input stream access',
-        'assert\s*\(' => 'Assert function (code execution)',
-        'create_function' => 'Create function (deprecated, dangerous)',
-        'preg_replace.*\/e' => 'PREG replace with eval modifier',
-        '\$\{' => 'Variable variables (potential obfuscation)',
-        'goto\s+' => 'Goto statement (obfuscation)',
+        // PHP execution functions
+        'eval\s*\(' => 'eval() function detected',
+        'assert\s*\(' => 'assert() function detected',
+        'create_function\s*\(' => 'create_function() detected',
+        'preg_replace.*e["\']' => 'preg_replace with e modifier',
+
+        // System execution
+        'system\s*\(' => 'system() function detected',
+        'exec\s*\(' => 'exec() function detected',
+        'shell_exec\s*\(' => 'shell_exec() function detected',
+        'passthru\s*\(' => 'passthru() function detected',
+        'proc_open\s*\(' => 'proc_open() function detected',
+        'popen\s*\(' => 'popen() function detected',
+
+        // File operations
+        'php:\/\/input' => 'php://input access detected',
+        'show_source\s*\(' => 'show_source() function detected',
+        'highlight_file\s*\(' => 'highlight_file() function detected',
+        'symlink\s*\(' => 'symlink() function detected',
+
+        // Obfuscation
+        'str_rot13\s*\(' => 'str_rot13() obfuscation detected',
+        'base64_decode\s*\(' => 'base64_decode() obfuscation detected',
+        'gzinflate\s*\(' => 'gzinflate() obfuscation detected',
+        'gzuncompress\s*\(' => 'gzuncompress() obfuscation detected',
+        'chr\s*\(' => 'chr() obfuscation detected',
+
+        // Error suppression
+        'set_time_limit\s*\(\s*0\s*\)' => 'set_time_limit(0) detected',
+        'error_reporting\s*\(\s*0\s*\)' => 'error_reporting(0) detected',
+        '@\s*[a-zA-Z_][a-zA-Z0-9_]*\s*\(' => 'Error suppression operator @ detected',
+
+        // Variable variables
+        '\$\$\s*[a-zA-Z_][a-zA-Z0-9_]*' => 'Variable variables detected',
+        '\$\{[^}]+\}' => 'Complex variable syntax detected',
+
+        // HTTP requests
+        'curl_init\s*\(' => 'curl_init() detected',
+        'fsockopen\s*\(' => 'fsockopen() detected',
+
+        // Database operations
+        'mysql_query\s*\(' => 'mysql_query() detected',
+        'mysqli_query\s*\(' => 'mysqli_query() detected',
+        'pg_query\s*\(' => 'pg_query() detected',
     ];
 
     /**
-     * @var array Suspicious file extensions
+     * Suspicious file extensions
      */
-    private $suspiciousExtensions = [
-        'php',
-        'php3',
-        'php4',
-        'php5',
-        'phtml',
-        'phar',
-    ];
+    private $suspiciousExtensions = ['php', 'phtml', 'php3', 'php4', 'php5', 'inc', 'tpl'];
 
     public function __construct()
     {
-        // Register hooks
         $this->registerHooks();
     }
 
@@ -74,171 +80,95 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
      */
     protected function registerHooks(): void
     {
-        // Hook khi plugin được uploaded
-        add_filter('upgrader_pre_install', [$this, 'scanBeforeInstall'], 10, 2);
-
-        // Hook khi plugin/theme được activated
-        add_action('activated_plugin', [$this, 'scanActivatedPlugin'], 10, 2);
-        add_action('switch_theme', [$this, 'scanActivatedTheme'], 10, 3);
-
-        // Hook vào file upload
-        add_filter('wp_handle_upload_prefilter', [$this, 'scanUploadedFile'], 10, 1);
+        // Hook vào unzip_file filter - được gọi SAU KHI extract nhưng TRƯỚC KHI move files
+        // Đây là hook CHÍNH để block malware trước khi install
+        add_filter('unzip_file', [$this, 'scanAfterUnzip'], 10, 4);
     }
 
     /**
-     * Scan trước khi install plugin/theme
+     * Scan extracted files after unzip but before moving to final destination
+     *
+     * @param mixed $result Result from unzip_file
+     * @param string $file Original zip file path
+     * @param string $to Extracted directory path
+     * @param array $needed_dirs Required directories
+     * @return mixed WP_Error if malware found, original result otherwise
      */
-    public function scanBeforeInstall($response, $hook_extra)
+    public function scanAfterUnzip($result, $file, $to, $needed_dirs)
     {
-        if (!$this->isEnabled()) {
-            return $response;
-        }
-
-        // Get type: plugin or theme
-        $type = isset($hook_extra['type']) ? $hook_extra['type'] : 'unknown';
-
-        if (!in_array($type, ['plugin', 'theme'])) {
-            return $response;
-        }
-
-        // Scan sẽ được thực hiện sau khi file được extract
-        // Tạo flag để scan sau
-        set_transient('wp_security_monitor_pending_scan', [
-            'type' => $type,
-            'hook_extra' => $hook_extra,
-            'timestamp' => time(),
-        ], 300); // 5 minutes
-
-        return $response;
-    }
-
-    /**
-     * Scan activated plugin
-     */
-    public function scanActivatedPlugin($plugin, $network_wide)
-    {
-        if (!$this->isEnabled()) {
-            return;
-        }
-
-        $pluginPath = WP_PLUGIN_DIR . '/' . $plugin;
-        $pluginDir = dirname($pluginPath);
-
-        if (!is_dir($pluginDir)) {
-            $pluginDir = WP_PLUGIN_DIR;
-        }
-
-        $this->scanDirectory($pluginDir, 'plugin', $plugin);
-    }
-
-    /**
-     * Scan activated theme
-     */
-    public function scanActivatedTheme($new_name, $new_theme, $old_theme)
-    {
-        if (!$this->isEnabled()) {
-            return;
-        }
-
-        $themeDir = get_theme_root() . '/' . $new_name;
-
-        if (is_dir($themeDir)) {
-            $this->scanDirectory($themeDir, 'theme', $new_name);
-        }
-    }
-
-    /**
-     * Scan uploaded file
-     */
-    public function scanUploadedFile($file)
-    {
-        // Debug log
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[WP Security Monitor] scanUploadedFile called for: ' . ($file['name'] ?? 'unknown'));
-        }
 
         if (!$this->isEnabled()) {
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[WP Security Monitor] PluginThemeUploadIssuer is disabled');
+                error_log('[WP Security Monitor] Issuer is DISABLED - skipping scan');
             }
-            return $file;
+            return $result;
         }
 
-        // Only scan PHP files
-        $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+        // Nếu đã có error từ unzip, return luôn
+        if (is_wp_error($result)) {
+            return $result;
+        }
 
-        if (in_array(strtolower($extension), $this->suspiciousExtensions)) {
-            $tmpPath = $file['tmp_name'];
+        // Scan extracted directory
+        $findings = $this->scanDirectory($to);
+
+        if (!empty($findings)) {
+            $fileName = basename($file);
 
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[WP Security Monitor] Scanning PHP file: ' . $file['name']);
+                error_log('[WP Security Monitor] MALICIOUS PLUGIN/THEME BLOCKED: ' . $fileName);
+                error_log('[WP Security Monitor] Found ' . count($findings) . ' malicious files');
             }
 
-            // Check file size
-            $maxSize = $this->getConfig('max_file_size', 1048576); // 1MB
-            if ($file['size'] > $maxSize) {
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('[WP Security Monitor] File too large, skipping: ' . $file['name']);
-                }
-                return $file;
-            }
+            // Gửi alert TRƯỚC KHI return WP_Error
+            $type = (strpos($file, 'plugin') !== false || strpos($to, 'plugin') !== false) ? 'plugin' : 'theme';
+            $this->sendAlert($type, $fileName, $findings);
 
-            if (file_exists($tmpPath)) {
-                $findings = $this->scanFile($tmpPath);
+            // Return WP_Error để block installation
+            $blockUpload = $this->config['block_suspicious_uploads'] ?? true;
 
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('[WP Security Monitor] Scan results: ' . count($findings) . ' findings for ' . $file['name']);
-                }
+            if ($blockUpload) {
+                $this->removeDirectory($to);
+                @unlink($file);
 
-                if (!empty($findings)) {
-                    if (defined('WP_DEBUG') && WP_DEBUG) {
-                        error_log('[WP Security Monitor] MALICIOUS FILE DETECTED: ' . $file['name'] . ' - Findings: ' . json_encode($findings));
-                    }
-
-                    $this->reportIssue([
-                        'type' => 'malicious_upload',
-                        'severity' => 'critical',
-                        'title' => 'Malicious File Upload Detected: ' . $file['name'],
-                        'description' => sprintf(
-                            'File "%s" contains %d malicious patterns',
-                            $file['name'],
-                            count($findings)
-                        ),
-                        'file_name' => $file['name'],
-                        'file_size' => $file['size'],
-                        'file_type' => $extension,
-                        'findings' => $findings,
-                        'upload_dir' => dirname($tmpPath),
-                        'content_preview' => substr(file_get_contents($tmpPath), 0, 500),
-                    ]);
-
-                    // Block upload if enabled
-                    if ($this->getConfig('block_suspicious_uploads', true)) {
-                        $file['error'] = 'File upload blocked: Malicious code detected by security monitor';
-                    }
-                }
-            }
-        } else {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[WP Security Monitor] File not scanned (not PHP): ' . $file['name']);
+                return new \WP_Error(
+                    'malware_detected',
+                    sprintf(
+                        '🚨 <strong>Security Alert</strong>: The uploaded file "<strong>%s</strong>" contains <strong>%d malicious file(s)</strong> with suspicious code patterns and has been blocked for your security.<br><br>Please contact your administrator if you believe this is a false positive.',
+                        esc_html($fileName),
+                        count($findings)
+                    ),
+                    ['findings' => $findings]
+                );
             }
         }
 
-        return $file;
+        return $result;
     }
 
     /**
-     * Scan directory recursively
+     * Scan directory for malicious files
+     *
+     * @param string $dir Directory to scan
+     * @return array Findings grouped by file
      */
-    private function scanDirectory(string $dir, string $type, string $name): void
+    private function scanDirectory(string $dir): array
     {
-        if (!is_dir($dir)) {
-            return;
-        }
-
         $findings = [];
+
+        if (!is_dir($dir)) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[WP Security Monitor] Directory does not exist: ' . $dir);
+            }
+            return $findings;
+        }
+
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[WP Security Monitor] Scanning directory: ' . $dir);
+        }
+
         $filesScanned = 0;
-        $maxFiles = $this->getConfig('max_files_per_scan', 100);
+        $maxFiles = $this->config['max_files_per_scan'] ?? 100;
 
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
@@ -251,56 +181,52 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
             }
 
             if ($file->isFile()) {
-                $extension = $file->getExtension();
+                $fileName = $file->getFilename();
 
-                if (in_array(strtolower($extension), $this->suspiciousExtensions)) {
-                    $fileFindings = $this->scanFile($file->getPathname());
+                // Chỉ scan PHP files
+                if (!$this->isSuspiciousExtension($fileName)) {
+                    continue;
+                }
 
-                    if (!empty($fileFindings)) {
-                        $findings[$file->getPathname()] = $fileFindings;
+                // Scan file
+                $content = @file_get_contents($file->getPathname());
+
+                if ($content === false) {
+                    continue;
+                }
+
+                $filesScanned++;
+
+                $fileFindings = $this->scanFileContent($content, $file->getPathname());
+
+                if (!empty($fileFindings)) {
+                    // Store relative path for better readability
+                    $relativePath = str_replace($dir . DIRECTORY_SEPARATOR, '', $file->getPathname());
+                    $findings[$relativePath] = $fileFindings;
+
+                    if (defined('WP_DEBUG') && WP_DEBUG) {
+                        error_log('[WP Security Monitor] Malicious file found: ' . $relativePath . ' - ' . count($fileFindings) . ' patterns');
                     }
-
-                    $filesScanned++;
                 }
             }
         }
 
-        if (!empty($findings)) {
-            $this->reportIssue([
-                'type' => 'malicious_' . $type,
-                'severity' => 'critical',
-                'title' => ucfirst($type) . ' Contains Malicious Code: ' . $name,
-                'description' => sprintf(
-                    '%s "%s" contains %d suspicious file(s) with malicious patterns',
-                    ucfirst($type),
-                    $name,
-                    count($findings)
-                ),
-                'item_type' => $type,
-                'item_name' => $name,
-                'directory' => $dir,
-                'files_scanned' => $filesScanned,
-                'findings' => $findings,
-            ]);
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[WP Security Monitor] Directory scan completed. Files scanned: ' . $filesScanned . ', Findings: ' . count($findings));
         }
+
+        return $findings;
     }
 
     /**
-     * Scan single file
+     * Scan file content for malicious patterns
+     *
+     * @param string $content File content
+     * @param string $fileName File name for logging
+     * @return array Found patterns
      */
-    private function scanFile(string $filePath): array
+    private function scanFileContent(string $content, string $fileName): array
     {
-        if (!file_exists($filePath) || !is_readable($filePath)) {
-            return [];
-        }
-
-        // Skip large files
-        $maxSize = $this->getConfig('max_file_size', 1048576); // 1MB default
-        if (filesize($filePath) > $maxSize) {
-            return [];
-        }
-
-        $content = file_get_contents($filePath);
         $findings = [];
 
         foreach ($this->maliciousPatterns as $pattern => $description) {
@@ -318,41 +244,170 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
     }
 
     /**
-     * Get line number of match
+     * Get line number where pattern was found
+     *
+     * @param string $content File content
+     * @param string $search Search string
+     * @return int Line number
      */
-    private function getLineNumber(string $content, string $match): int
+    private function getLineNumber(string $content, string $search): int
     {
-        if (empty($match)) {
-            return 0;
+        $lines = explode("\n", $content);
+        foreach ($lines as $lineNum => $line) {
+            if (strpos($line, $search) !== false) {
+                return $lineNum + 1;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Check if file extension is suspicious
+     *
+     * @param string $fileName File name
+     * @return bool
+     */
+    private function isSuspiciousExtension(string $fileName): bool
+    {
+        $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+        return in_array($ext, $this->suspiciousExtensions);
+    }
+
+    /**
+     * Remove directory recursively
+     *
+     * @param string $dir Directory path
+     * @return bool
+     */
+    private function removeDirectory(string $dir): bool
+    {
+        if (!is_dir($dir)) {
+            return false;
         }
 
-        $pos = strpos($content, $match);
-        if ($pos === false) {
-            return 0;
+        $files = array_diff(scandir($dir), ['.', '..']);
+        foreach ($files as $file) {
+            $path = $dir . DIRECTORY_SEPARATOR . $file;
+            if (is_dir($path)) {
+                $this->removeDirectory($path);
+            } else {
+                unlink($path);
+            }
         }
 
-        return substr_count(substr($content, 0, $pos), "\n") + 1;
+        return rmdir($dir);
     }
 
 
-    /**
-     * Report issue
-     */
-    private function reportIssue(array $issueData): void
-    {
-        $issueData['ip_address'] = $_SERVER['REMOTE_ADDR'] ?? '';
-        $issueData['user_agent'] = $_SERVER['HTTP_USER_AGENT'] ?? '';
-        $issueData['user_id'] = get_current_user_id();
-        $issueData['username'] = wp_get_current_user()->user_login ?? '';
-        $issueData['timestamp'] = current_time('mysql');
-        $issueData['url'] = $_SERVER['REQUEST_URI'] ?? '';
 
-        // Trigger action để Bot xử lý
-        do_action('wp_security_monitor_malicious_upload', $issueData);
+    /**
+     * Send security alert
+     *
+     * @param string $type Plugin or theme
+     * @param string $name Item name
+     * @param array $findings Malicious findings
+     */
+    private function sendAlert(string $type, string $name, array $findings): void
+    {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[WP Security Monitor] MALICIOUS ' . strtoupper($type) . ' DETECTED: ' . $name);
+            error_log('[WP Security Monitor] Sending realtime alert...');
+        }
+
+        // Realtime issuer - gửi notification trực tiếp
+        $bot = \Puleeno\SecurityBot\WebMonitor\Bot::getInstance();
+        if ($bot) {
+            // Tạo issue trước
+            global $wpdb;
+            $tableName = $wpdb->prefix . 'security_monitor_issues';
+
+            // Thu thập thông tin người upload
+            $uploaderId = get_current_user_id();
+            $uploader = wp_get_current_user();
+            $uploadMetadata = [
+                'uploader_id' => $uploaderId,
+                'uploader_login' => $uploader->user_login,
+                'uploader_email' => $uploader->user_email,
+                'uploader_display_name' => $uploader->display_name,
+                'ip_address' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
+                'referer' => $_SERVER['HTTP_REFERER'] ?? 'unknown',
+                'upload_time' => current_time('mysql'),
+                'upload_method' => wp_doing_ajax() ? 'ajax' : (defined('WP_CLI') ? 'cli' : 'web'),
+            ];
+
+            $issueData = [
+                'issue_hash' => md5($type . '_' . $name . '_' . time()),
+                'issue_type' => 'malicious_' . $type,
+                'severity' => 'critical',
+                'title' => ucfirst($type) . ' Contains Malicious Code: ' . $name,
+                'description' => sprintf(
+                    '%s "%s" contains %d suspicious file(s) with malicious patterns',
+                    ucfirst($type),
+                    $name,
+                    count($findings)
+                ),
+                'status' => 'new',
+                'issuer_name' => 'PluginThemeUploadIssuer',
+                'first_detected' => current_time('mysql'),
+                'last_detected' => current_time('mysql'),
+                'details' => json_encode($findings),
+                'metadata' => json_encode($uploadMetadata),
+                'ip_address' => $uploadMetadata['ip_address'],
+                'user_agent' => $uploadMetadata['user_agent'],
+            ];
+
+            $wpdb->insert($tableName, $issueData);
+            $issueId = $wpdb->insert_id;
+
+            if ($issueId) {
+                // Realtime issuer - gửi notification ngay lập tức qua Telegram
+                try {
+                    // Format message cho Telegram
+                    $message = sprintf(
+                        "🚨 *CẢNH BÁO BẢO MẬT*\n\n*%s Contains Malicious Code: %s*\n\n📝 _%s contains %d suspicious file(s) with malicious patterns_\n\n⚠️ Mức độ: 🔴 *CRITICAL*\n\n👤 *Người upload:*\n• Tên: %s (%s)\n• Email: %s\n• IP: %s\n• Phương thức: %s\n\n⏰ %s\n🌐 %s",
+                        ucfirst($type),
+                        $name,
+                        ucfirst($type),
+                        count($findings),
+                        $uploadMetadata['uploader_display_name'],
+                        $uploadMetadata['uploader_login'],
+                        $uploadMetadata['uploader_email'],
+                        $uploadMetadata['ip_address'],
+                        strtoupper($uploadMetadata['upload_method']),
+                        current_time('d/m/Y H:i:s'),
+                        home_url()
+                    );
+
+                    $context = [
+                        'issuer' => 'PluginThemeUploadIssuer',
+                        'issue_data' => $issueData,
+                        'findings' => $findings,
+                        'timestamp' => current_time('mysql'),
+                        'is_realtime' => true
+                    ];
+
+                    // Gửi trực tiếp qua Telegram channel
+                    $telegramChannel = \Puleeno\SecurityBot\WebMonitor\Channels\TelegramChannel::getInstance();
+                    if ($telegramChannel && $telegramChannel->isAvailable()) {
+                        $telegramChannel->send($message, $context);
+                        if (defined('WP_DEBUG') && WP_DEBUG) {
+                            error_log('[WP Security Monitor] Realtime notification sent via Telegram');
+                        }
+                    }
+                } catch (\Exception $e) {
+                    if (defined('WP_DEBUG') && WP_DEBUG) {
+                        error_log('[WP Security Monitor] Failed to send realtime notification: ' . $e->getMessage());
+                    }
+                }
+            }
+        }
     }
 
     /**
      * Get issuer name
+     *
+     * @return string
      */
     public function getName(): string
     {
@@ -360,25 +415,12 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
     }
 
     /**
-     * Detect issues (for scheduled checks)
+     * Detect issues (not used for realtime issuer)
+     *
+     * @return array
      */
     public function detect(): array
     {
-        // Realtime issuer, không cần scheduled detection
         return [];
     }
-
-    /**
-     * Get default config
-     */
-    public function getDefaultConfig(): array
-    {
-        return [
-            'enabled' => true,
-            'max_files_per_scan' => 100,
-            'max_file_size' => 1048576, // 1MB
-            'block_suspicious_uploads' => true,
-        ];
-    }
 }
-

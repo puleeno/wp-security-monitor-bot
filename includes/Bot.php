@@ -2370,16 +2370,28 @@ class Bot extends MonitorAbstract
         $filePath = $errorData['file_path'] ?? '';
         $lineNumber = $errorData['line_number'] ?? 0;
 
+        // Escape markdown special characters
+        $title = $this->escapeMarkdown($title);
+        $description = $this->escapeMarkdown($description);
+
+        // Truncate if too long (Telegram limit)
+        if (strlen($title) > 200) {
+            $title = substr($title, 0, 200) . '...';
+        }
+        if (strlen($description) > 500) {
+            $description = substr($description, 0, 500) . '...';
+        }
+
         $icon = $level === 'error' ? '🚨' : ($level === 'warning' ? '⚠️' : '⚡');
 
         $message = "{$icon} *CẢNH BÁO LỖI HỆ THỐNG*\n\n";
-        $message .= "*{$title}*\n\n";
-        $message .= "📝 _{$description}_\n\n";
+        $message .= "*Error Type:* {$title}\n\n";
+        $message .= "📝 *Chi tiết:*\n{$description}\n\n";
         $message .= "⚠️ Mức độ: *" . strtoupper($severity) . "*\n";
         $message .= "🔢 Level: *{$level}*\n";
 
         if (!empty($filePath)) {
-            $message .= "📁 File: `{$filePath}:{$lineNumber}`\n";
+            $message .= "📁 File: `" . basename($filePath) . ":{$lineNumber}`\n";
         }
 
         if (!empty($errorData['url'])) {
@@ -2604,5 +2616,24 @@ class Bot extends MonitorAbstract
         $message .= "\n\n💡 *Gợi ý:* Kiểm tra backtrace và queries để tối ưu performance";
 
         return $message;
+    }
+
+    /**
+     * Escape special Markdown characters for Telegram
+     *
+     * @param string $text
+     * @return string
+     */
+    private function escapeMarkdown(string $text): string
+    {
+        // Characters that need to be escaped in Telegram MarkdownV2
+        // For simple Markdown mode, we need to escape: _ * [ ] ( ) ~ ` > # + - = | { } . !
+        $specialChars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!', '\\'];
+
+        foreach ($specialChars as $char) {
+            $text = str_replace($char, '\\' . $char, $text);
+        }
+
+        return $text;
     }
 }

@@ -380,6 +380,7 @@ const Issues: React.FC = () => {
                           key: 'file',
                           render: (file: string) => {
                             // Extract filename from full path
+                            if (!file) return '-';
                             const filename = file.split(/[/\\]/).pop() || file;
                             return (
                               <div>
