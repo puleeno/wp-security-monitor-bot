@@ -15,9 +15,9 @@ import type { RootState, AppDispatch } from '../store';
 import {
   fetchIssues,
   markAsViewed,
-  unmarkAsViewed,
   ignoreIssue,
   resolveIssue,
+  bulkAction,
 } from '../reducers/issuesReducer';
 import type { Issue } from '../types';
 import { getIssuerName } from '../utils/issuerNames';
@@ -30,9 +30,12 @@ const { Panel } = Collapse;
 const Issues: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { t } = useTranslation();
-  const { items, total, currentPage, perPage, loading, filters } = useSelector(
+  const { items, total, currentPage, perPage, loading, filters, bulkLoading } = useSelector(
     (state: RootState) => state.issues
   );
+
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
@@ -104,9 +107,7 @@ const Issues: React.FC = () => {
   };
 
   const handleMarkViewed = (issueId: number, viewed: boolean): void => {
-    if (viewed) {
-      dispatch(unmarkAsViewed(issueId));
-    } else {
+    if (!viewed) {
       dispatch(markAsViewed(issueId));
     }
   };
@@ -275,8 +276,41 @@ const Issues: React.FC = () => {
           dataSource={items}
           rowKey="id"
           loading={loading}
+          rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
           pagination={false}
         />
+        {/* Bulk Actions */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+          <div>
+            <Space>
+              <Button disabled={selectedRowKeys.length === 0} loading={bulkActionLoading || bulkLoading}
+                onClick={() => {
+                  setBulkActionLoading(true);
+                  dispatch(bulkAction({ ids: selectedRowKeys as number[], action: 'mark_viewed' }));
+                  setBulkActionLoading(false);
+                }}>Đánh dấu đã xem</Button>
+              <Button disabled={selectedRowKeys.length === 0} loading={bulkActionLoading || bulkLoading}
+                onClick={() => {
+                  setBulkActionLoading(true);
+                  dispatch(bulkAction({ ids: selectedRowKeys as number[], action: 'ignore' }));
+                  setBulkActionLoading(false);
+                }}>Ignore</Button>
+              <Button type="primary" disabled={selectedRowKeys.length === 0} loading={bulkActionLoading || bulkLoading}
+                onClick={() => {
+                  setBulkActionLoading(true);
+                  dispatch(bulkAction({ ids: selectedRowKeys as number[], action: 'resolve' }));
+                  setBulkActionLoading(false);
+                }}>Resolve</Button>
+              <Button danger disabled={selectedRowKeys.length === 0} loading={bulkActionLoading || bulkLoading}
+                onClick={() => {
+                  setBulkActionLoading(true);
+                  dispatch(bulkAction({ ids: selectedRowKeys as number[], action: 'delete' }));
+                  setBulkActionLoading(false);
+                }}>Xóa</Button>
+            </Space>
+          </div>
+          <div />
+        </div>
 
         <Pagination
           current={currentPage}

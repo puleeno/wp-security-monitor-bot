@@ -24,10 +24,13 @@ export const issuesRoutes = {
 
   markAsViewed: (issueId: number): string => `${BASE_ROUTE}/${issueId}/viewed`,
 
-  unmarkAsViewed: (issueId: number): string => `${BASE_ROUTE}/${issueId}/viewed`,
+  // unmark viewed: removed
 
   ignoreIssue: (issueId: number): string => `${BASE_ROUTE}/${issueId}/ignore`,
 
   resolveIssue: (issueId: number): string => `${BASE_ROUTE}/${issueId}/resolve`,
+
+  // Bulk updates use POST to /issues with JSON body
+  bulkUpdate: (): string => `${BASE_ROUTE}`,
 };
 

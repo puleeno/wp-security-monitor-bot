@@ -39,17 +39,17 @@ class RestApi extends WP_REST_Controller
                 'callback' => [$this, 'getIssues'],
                 'permission_callback' => [$this, 'checkPermissions'],
             ],
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'bulkUpdateIssues'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
         ]);
 
         register_rest_route($this->namespace, '/issues/(?P<id>\d+)/viewed', [
             [
                 'methods' => WP_REST_Server::CREATABLE,
                 'callback' => [$this, 'markAsViewed'],
-                'permission_callback' => [$this, 'checkPermissions'],
-            ],
-            [
-                'methods' => WP_REST_Server::DELETABLE,
-                'callback' => [$this, 'unmarkAsViewed'],
                 'permission_callback' => [$this, 'checkPermissions'],
             ],
         ]);
@@ -220,6 +220,12 @@ class RestApi extends WP_REST_Controller
         return current_user_can('manage_options');
     }
 
+    private function checkDeletePermissions(): bool
+    {
+        // Chỉ allow administrator xóa issues
+        return current_user_can('delete_users') || current_user_can('administrator');
+    }
+
     /**
      * Get issues
      *
@@ -251,6 +257,109 @@ class RestApi extends WP_REST_Controller
         $result = $this->issueManager->getIssues($args);
 
         return new WP_REST_Response($result, 200);
+    }
+
+    /**
+     * Bulk update issues: actions = mark_viewed, unmark_viewed, ignore, resolve, delete
+     */
+    public function bulkUpdateIssues(WP_REST_Request $request)
+    {
+        $params = $request->get_json_params();
+        $ids = array_map('intval', $params['ids'] ?? []);
+        $action = sanitize_text_field($params['action'] ?? '');
+        $notes = sanitize_textarea_field($params['notes'] ?? '');
+
+        if (empty($ids) || empty($action)) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'Thiếu ids hoặc action',
+            ], 400);
+        }
+
+        $manager = $this->issueManager;
+        $results = [
+            'processed' => 0,
+            'failed' => 0,
+            'skipped' => 0,
+            'errors' => [],
+        ];
+
+        foreach ($ids as $id) {
+            // Skip if issue already processed (viewed/ignored/resolved)
+            $issueRow = $this->getIssueRow($id);
+            if (!$issueRow) {
+                $results['failed']++;
+                $results['errors'][] = [ 'id' => $id, 'error' => 'Issue không tồn tại' ];
+                continue;
+            }
+
+            $isProcessed = ((int)($issueRow['viewed'] ?? 0) === 1)
+                || ((int)($issueRow['is_ignored'] ?? 0) === 1)
+                || in_array(($issueRow['status'] ?? ''), ['resolved', 'ignored'], true);
+
+            $ok = false;
+            switch ($action) {
+                case 'mark_viewed':
+                    if ($isProcessed) { $results['skipped']++; break; }
+                    $ok = $manager->markAsViewed($id);
+                    break;
+                case 'unmark_viewed':
+                    // flow unmark đã loại bỏ - coi như skip
+                    $results['skipped']++;
+                    $ok = false;
+                    break;
+                case 'ignore':
+                    if ($isProcessed) { $results['skipped']++; break; }
+                    $ok = $manager->ignoreIssue($id, $notes ?: 'Ignored via bulk action');
+                    break;
+                case 'resolve':
+                    if ($isProcessed) { $results['skipped']++; break; }
+                    $ok = $manager->resolveIssue($id, $notes ?: 'Resolved via bulk action');
+                    break;
+                case 'delete':
+                    if (!$this->checkDeletePermissions()) {
+                        $results['failed']++;
+                        $results['errors'][] = [ 'id' => $id, 'error' => 'Không có quyền xóa' ];
+                        continue 2;
+                    }
+                    $ok = $this->deleteIssue($id);
+                    break;
+                default:
+                    return new WP_REST_Response([
+                        'success' => false,
+                        'message' => 'Action không hợp lệ',
+                    ], 400);
+            }
+
+            if ($ok) {
+                $results['processed']++;
+            } else {
+                $results['failed']++;
+                $results['errors'][] = [ 'id' => $id, 'error' => 'Thao tác thất bại' ];
+            }
+        }
+
+        return new WP_REST_Response([
+            'success' => true,
+            'result' => $results,
+        ], 200);
+    }
+
+    private function deleteIssue(int $issueId): bool
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . \Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_ISSUES;
+        return $wpdb->delete($table, [ 'id' => $issueId ], [ '%d' ]) !== false;
+    }
+
+    private function getIssueRow(int $issueId)
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . \Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_ISSUES;
+        return $wpdb->get_row($wpdb->prepare(
+            "SELECT id, viewed, is_ignored, status FROM {$table} WHERE id = %d",
+            $issueId
+        ), ARRAY_A);
     }
 
     /**

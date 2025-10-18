@@ -1,6 +1,6 @@
 import { Epic, combineEpics } from 'redux-observable';
 import { of } from 'rxjs';
-import { filter, map, catchError, switchMap, mergeMap } from 'rxjs/operators';
+import { filter, map, catchError, switchMap, mergeMap, withLatestFrom } from 'rxjs/operators';
 import { ajax } from 'rxjs/ajax';
 import { issuesRoutes } from '../services/issuesService';
 import { buildUrl, getApiHeaders } from '../services/api';
@@ -10,12 +10,14 @@ import {
   fetchIssuesFailure,
   markAsViewed,
   markAsViewedSuccess,
-  unmarkAsViewed,
-  unmarkAsViewedSuccess,
+  // unmark removed
   ignoreIssue,
   ignoreIssueSuccess,
   resolveIssue,
   resolveIssueSuccess,
+  bulkAction,
+  bulkActionSuccess,
+  bulkActionFailure,
 } from '../reducers/issuesReducer';
 import { addNotification } from '../reducers/uiReducer';
 
@@ -85,38 +87,6 @@ const markAsViewedEpic: Epic = (action$) =>
     })
   );
 
-// Unmark as viewed epic
-const unmarkAsViewedEpic: Epic = (action$) =>
-  action$.pipe(
-    filter(unmarkAsViewed.match),
-    switchMap((action) => {
-      const url = buildUrl(issuesRoutes.unmarkAsViewed(action.payload));
-
-      return ajax({
-        url,
-        method: 'DELETE',
-        headers: getApiHeaders(),
-      }).pipe(
-        mergeMap(() =>
-          of(
-            unmarkAsViewedSuccess(action.payload),
-            addNotification({
-              type: 'success',
-              message: 'Đã bỏ đánh dấu đã xem',
-            })
-          )
-        ),
-        catchError((error) =>
-          of(
-            addNotification({
-              type: 'error',
-              message: `Lỗi: ${error.message}`,
-            })
-          )
-        )
-      );
-    })
-  );
 
 // Ignore issue epic
 const ignoreIssueEpic: Epic = (action$) =>
@@ -189,7 +159,34 @@ const resolveIssueEpic: Epic = (action$) =>
 export const issuesEpic = combineEpics(
   fetchIssuesEpic,
   markAsViewedEpic,
-  unmarkAsViewedEpic,
   ignoreIssueEpic,
-  resolveIssueEpic
+  resolveIssueEpic,
+  // Bulk epic
+  ((action$, state$) => action$.pipe(
+    filter(bulkAction.match),
+    switchMap((action) => {
+      const url = buildUrl(issuesRoutes.bulkUpdate());
+      return ajax({
+        url,
+        method: 'POST',
+        headers: getApiHeaders(),
+        body: action.payload,
+      }).pipe(
+        withLatestFrom(state$),
+        mergeMap(([_, state]) => {
+          const currentPage = (state as any).issues.currentPage;
+          const filters = (state as any).issues.filters;
+          return of(
+            bulkActionSuccess({ ids: action.payload.ids, action: action.payload.action }),
+            fetchIssues({ page: currentPage, filters }),
+            addNotification({ type: 'success', message: 'Bulk action thành công' })
+          );
+        }),
+        catchError((error) => of(
+          addNotification({ type: 'error', message: `Bulk action lỗi: ${error.message}` }),
+          bulkActionFailure()
+        ))
+      );
+    })
+  )) as Epic
 );

@@ -1017,6 +1017,22 @@ class Bot extends MonitorAbstract
             }
             $message .= "⚠️ Mức độ: {$severityIcon} *" . strtoupper($severity) . "*\n\n";
             $message .= "📝 Chi tiết:\n_{$description}_\n";
+        } elseif ($issuerName === 'File Change Monitor' || $type === 'file_change') {
+            // File change details
+            $message = "📁 *FILE CHANGE DETECTED*\n\n";
+            $message .= "*" . ($title ?: 'File changed') . "*\n\n";
+            // Extract file path from description if provided like '... File: path (Size: ..., Modified: ...)'
+            $fileLine = '';
+            if (!empty($description)) {
+                $fileLine = $description;
+            }
+            if (!empty($filePath)) {
+                $message .= "🗂 File: `{$filePath}`\n";
+            }
+            if (!empty($fileLine)) {
+                $message .= "📝 Chi tiết: \n" . $fileLine . "\n";
+            }
+            $message .= "⚠️ Mức độ: {$severityIcon} *" . strtoupper($severity) . "*";
         } else {
             // Default format
             $message = "{$typeIcon} *CẢNH BÁO BẢO MẬT*\n\n";

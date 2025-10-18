@@ -8,6 +8,7 @@ interface IssuesState {
   currentPage: number;
   perPage: number;
   loading: boolean;
+  bulkLoading: boolean;
   error: string | null;
   filters: {
     status?: string;
@@ -24,6 +25,7 @@ const initialState: IssuesState = {
   currentPage: 1,
   perPage: 20,
   loading: false,
+  bulkLoading: false,
   error: null,
   filters: {},
 };
@@ -67,17 +69,7 @@ const issuesSlice = createSlice({
       }
     },
 
-    unmarkAsViewed: (_state, _action: PayloadAction<number>) => {
-      // Epic sẽ handle API call
-    },
-    unmarkAsViewedSuccess: (state, action: PayloadAction<number>) => {
-      const issue = state.items.find(i => i.id === action.payload);
-      if (issue) {
-        issue.viewed = false;
-        issue.viewed_by = null;
-        issue.viewed_at = null;
-      }
-    },
+    // unmark removed
 
     ignoreIssue: (_state, _action: PayloadAction<{ issueId: number; reason: string }>) => {
       // Epic sẽ handle API call
@@ -99,6 +91,37 @@ const issuesSlice = createSlice({
         issue.status = 'resolved';
       }
     },
+    // Bulk actions
+    bulkAction: (state, _action: PayloadAction<{ ids: number[]; action: string; notes?: string }>) => {
+      state.bulkLoading = true;
+    },
+    bulkActionSuccess: (state, action: PayloadAction<{ ids: number[]; action: string }>) => {
+      state.bulkLoading = false;
+      const { ids, action: act } = action.payload;
+      ids.forEach(id => {
+        const issue = state.items.find(i => i.id === id);
+        if (!issue) return;
+        if (act === 'mark_viewed') {
+          issue.viewed = true;
+          issue.viewed_at = new Date().toISOString();
+        } else if (act === 'unmark_viewed') {
+          issue.viewed = false;
+          issue.viewed_by = null;
+          issue.viewed_at = null;
+        } else if (act === 'ignore') {
+          issue.is_ignored = true;
+          issue.status = 'ignored';
+        } else if (act === 'resolve') {
+          issue.status = 'resolved';
+        } else if (act === 'delete') {
+          state.items = state.items.filter(i => i.id !== id);
+          state.total = Math.max(0, state.total - 1);
+        }
+      });
+    },
+    bulkActionFailure: (state) => {
+      state.bulkLoading = false;
+    },
   },
 });
 
@@ -108,12 +131,13 @@ export const {
   fetchIssuesFailure,
   markAsViewed,
   markAsViewedSuccess,
-  unmarkAsViewed,
-  unmarkAsViewedSuccess,
   ignoreIssue,
   ignoreIssueSuccess,
   resolveIssue,
   resolveIssueSuccess,
+  bulkAction,
+  bulkActionSuccess,
+  bulkActionFailure,
 } = issuesSlice.actions;
 
 export default issuesSlice.reducer;
