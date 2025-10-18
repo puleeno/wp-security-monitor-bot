@@ -131,8 +131,9 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             return;
         }
 
-        // Skip admin và login pages để tránh false positives
-        if (is_admin() || strpos($_SERVER['REQUEST_URI'], 'wp-login.php') !== false) {
+        // Skip admin, login pages và static assets để tránh false positives
+        $uri = $_SERVER['REQUEST_URI'] ?? '';
+        if (is_admin() || strpos($uri, 'wp-login.php') !== false || $this->isStaticAsset($uri)) {
             return;
         }
 
@@ -261,7 +262,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         $severity = $this->calculateSeverity($suspiciousParams);
 
                 // Tạo issue với full forensic data
-        $issueManager = new \Puleeno\SecurityBot\WebMonitor\IssueManager();
+        $issueManager = \Puleeno\SecurityBot\WebMonitor\IssueManager::getInstance();
 
         $issue = ForensicHelper::createSecurityIssue(
             'sql_injection_attempt',
@@ -274,7 +275,8 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             1 // Skip this function frame
         );
 
-        $issueManager->recordIssue($issue);
+        // Record dưới issuer name hiện tại
+        $issueManager->recordIssue('sql_injection_attempt', $issue);
 
         // Enhanced logging với forensic context
         ForensicHelper::logSecurityEvent(
@@ -303,7 +305,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             return;
         }
 
-                $issueManager = new \Puleeno\SecurityBot\WebMonitor\IssueManager();
+        $issueManager = \Puleeno\SecurityBot\WebMonitor\IssueManager::getInstance();
 
         $issue = ForensicHelper::createSecurityIssue(
             'database_error_sqli',
@@ -317,7 +319,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             1 // Skip this function frame
         );
 
-        $issueManager->recordIssue($issue);
+        $issueManager->recordIssue('database_error_sqli', $issue);
     }
 
     /**
@@ -451,6 +453,18 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
     {
         header('HTTP/1.1 403 Forbidden');
         die('Request blocked due to suspicious activity.');
+    }
+
+    private function isStaticAsset(string $uri): bool
+    {
+        $path = parse_url($uri, PHP_URL_PATH) ?: $uri;
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        if (!$ext) return false;
+        $staticExts = [
+            'jpg','jpeg','png','gif','svg','webp','ico',
+            'css','js','map','woff','woff2','ttf','eot','otf','mp4','webm','ogg','mp3','wav'
+        ];
+        return in_array($ext, $staticExts, true);
     }
 
     public function getName(): string

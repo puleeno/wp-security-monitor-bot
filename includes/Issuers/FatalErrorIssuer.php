@@ -98,6 +98,11 @@ class FatalErrorIssuer extends RealtimeIssuerAbstract
             return;
         }
 
+        // Bỏ qua các request không nên alert (static assets, HEAD/OPTIONS, 404)
+        if ($this->shouldIgnoreRequest()) {
+            return;
+        }
+
         $error = error_get_last();
 
         if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
@@ -141,20 +146,45 @@ class FatalErrorIssuer extends RealtimeIssuerAbstract
             $level = 'error';
 
             if (in_array($level, $this->monitorLevels)) {
-                $errorData = [
-                    'type' => 'wp_die',
-                    'level' => $level,
-                    'severity' => 'high',
-                    'title' => "WordPress Critical Error: {$title}",
-                    'description' => is_string($message) ? $message : print_r($message, true),
-                    'url' => $_SERVER['REQUEST_URI'] ?? '',
-                    'ip_address' => $_SERVER['REMOTE_ADDR'] ?? '',
-                    'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
-                    'timestamp' => current_time('mysql'),
-                    'backtrace' => $this->getBacktrace(),
-                ];
+                // Bỏ qua các request không nên alert
+                if (!$this->shouldIgnoreRequest()) {
+                    $desc = '';
+                    // Chuẩn hoá nội dung message để tránh dump object dài
+                    if (is_object($message) && class_exists('WP_Error') && $message instanceof \WP_Error) {
+                        $desc = $message->get_error_message();
+                    } elseif (is_array($message)) {
+                        $desc = 'A critical error occurred while rendering this request.';
+                    } else {
+                        $desc = (string) $message;
+                    }
 
-                do_action('wp_security_monitor_fatal_error', $errorData);
+                    // Loại bỏ HTML tags nếu có
+                    if (function_exists('wp_strip_all_tags')) {
+                        $desc = wp_strip_all_tags($desc);
+                    } else {
+                        $desc = strip_tags($desc);
+                    }
+
+                    // Truncate để tránh quá dài
+                    if (strlen($desc) > 500) {
+                        $desc = substr($desc, 0, 500) . '...';
+                    }
+
+                    $errorData = [
+                        'type' => 'wp_die',
+                        'level' => $level,
+                        'severity' => 'high',
+                        'title' => "WordPress Critical Error: {$title}",
+                        'description' => $desc,
+                        'url' => $_SERVER['REQUEST_URI'] ?? '',
+                        'ip_address' => $_SERVER['REMOTE_ADDR'] ?? '',
+                        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
+                        'timestamp' => current_time('mysql'),
+                        'backtrace' => $this->getBacktrace(),
+                    ];
+
+                    do_action('wp_security_monitor_fatal_error', $errorData);
+                }
             }
 
             // Call original handler
@@ -250,6 +280,50 @@ class FatalErrorIssuer extends RealtimeIssuerAbstract
         }
 
         return $formatted;
+    }
+
+    /**
+     * Xác định request có nên ignore không (static asset/404/head/options)
+     */
+    private function shouldIgnoreRequest(): bool
+    {
+        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        if (in_array($method, ['HEAD', 'OPTIONS'], true)) {
+            return true;
+        }
+
+        $uri = $_SERVER['REQUEST_URI'] ?? '';
+        if ($this->isStaticAssetRequest($uri)) {
+            return true;
+        }
+
+        if (function_exists('http_response_code')) {
+            $code = http_response_code();
+            if ($code === 404) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Kiểm tra URL có phải static asset (ảnh, css, js, font, media)
+     */
+    private function isStaticAssetRequest(string $uri): bool
+    {
+        $path = parse_url($uri, PHP_URL_PATH) ?: $uri;
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        if (!$ext) return false;
+
+        $staticExts = [
+            'jpg','jpeg','png','gif','svg','webp','ico',
+            'css','js','map',
+            'woff','woff2','ttf','eot','otf',
+            'mp4','webm','ogg','mp3','wav'
+        ];
+
+        return in_array($ext, $staticExts, true);
     }
 
     /**
