@@ -202,11 +202,13 @@ class IssueManager
             $where[] = 'is_ignored = 0';
         }
 
-        // Filter out plugin files (avoid false positives)
-        $pluginDir = dirname(dirname(__DIR__));
-        $pluginPath = wp_normalize_path($pluginDir);
-        $where[] = '(file_path IS NULL OR file_path NOT LIKE %s)';
-        $params[] = $pluginPath . '%';
+        // Filter out plugin files (avoid false positives) unless explicitly included
+        if (!$args['include_plugin_files']) {
+            $pluginDir = dirname(dirname(__DIR__));
+            $pluginPath = wp_normalize_path($pluginDir);
+            $where[] = '(file_path IS NULL OR file_path NOT LIKE %s)';
+            $params[] = $pluginPath . '%';
+        }
 
         // Pagination
         $offset = ($args['page'] - 1) * $args['per_page'];

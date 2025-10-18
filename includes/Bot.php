@@ -1141,6 +1141,9 @@ class Bot extends MonitorAbstract
      */
     public function getStats(): array
     {
+        // Đảm bảo khởi tạo channels/issuers theo trạng thái hiện tại
+        $this->ensureChannelsInitialized();
+
         $issueManager = IssueManager::getInstance();
         $issueStats = $issueManager->getStats();
 

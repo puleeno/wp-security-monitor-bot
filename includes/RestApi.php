@@ -242,6 +242,10 @@ class RestApi extends WP_REST_Controller
             'severity' => $severity,
             'issuer' => $issuer,
             'search' => $search,
+            // Hiển thị cả issues ở plugin (để không bị lọc nhầm)
+            'include_plugin_files' => true,
+            // Bao gồm cả ignored nếu UI không filter riêng
+            'include_ignored' => true,
         ];
 
         $result = $this->issueManager->getIssues($args);
