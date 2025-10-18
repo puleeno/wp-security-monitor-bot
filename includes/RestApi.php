@@ -234,6 +234,7 @@ class RestApi extends WP_REST_Controller
      */
     public function getIssues(WP_REST_Request $request)
     {
+        $this->sendNoCacheHeaders();
         $page = $request->get_param('page') ?? 1;
         $per_page = $request->get_param('per_page') ?? 20;
         $status = $request->get_param('status') ?? '';
@@ -264,6 +265,7 @@ class RestApi extends WP_REST_Controller
      */
     public function bulkUpdateIssues(WP_REST_Request $request)
     {
+        $this->sendNoCacheHeaders();
         $params = $request->get_json_params();
         $ids = array_map('intval', $params['ids'] ?? []);
         $action = sanitize_text_field($params['action'] ?? '');
@@ -435,6 +437,7 @@ class RestApi extends WP_REST_Controller
      */
     public function ignoreIssue(WP_REST_Request $request)
     {
+        $this->sendNoCacheHeaders();
         $issueId = (int) $request->get_param('id');
         // Một số host trả 415 khi body JSON; chấp nhận cả form/body rỗng
         $reasonParam = $request->get_param('reason');
@@ -464,6 +467,7 @@ class RestApi extends WP_REST_Controller
      */
     public function resolveIssue(WP_REST_Request $request)
     {
+        $this->sendNoCacheHeaders();
         $issueId = (int) $request->get_param('id');
         $notesParam = $request->get_param('notes');
         $notes = is_string($notesParam) ? sanitize_textarea_field($notesParam) : '';
@@ -1223,6 +1227,28 @@ class RestApi extends WP_REST_Controller
             'message' => 'Issuer config updated successfully',
             'config' => $updatedConfig,
         ], 200);
+    }
+
+    /**
+     * Gửi header no-cache để tránh CDN/host cache REST responses
+     */
+    private function sendNoCacheHeaders(): void
+    {
+        if (function_exists('nocache_headers')) {
+            nocache_headers();
+        }
+        if (function_exists('rest_get_server')) {
+            $server = rest_get_server();
+            if ($server) {
+                $server->send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+                $server->send_header('Pragma', 'no-cache');
+                $server->send_header('Expires', 'Wed, 11 Jan 1984 05:00:00 GMT');
+            }
+        } else {
+            @header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+            @header('Pragma: no-cache');
+            @header('Expires: Wed, 11 Jan 1984 05:00:00 GMT');
+        }
     }
 }
 
