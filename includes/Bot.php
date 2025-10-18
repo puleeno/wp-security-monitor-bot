@@ -2664,7 +2664,25 @@ class Bot extends MonitorAbstract
             $message .= "\n🔍 *Backtrace (Top 5):*\n";
             $traces = array_slice($performanceData['backtrace'], 0, 5);
             foreach ($traces as $trace) {
-                $message .= "```\n{$trace}\n```\n";
+                // Hỗ trợ cả dạng string và array {file,line,function,class}
+                if (is_array($trace)) {
+                    $file = $trace['file'] ?? '';
+                    $line = $trace['line'] ?? '';
+                    $func = $trace['function'] ?? '';
+                    $cls  = $trace['class'] ?? '';
+
+                    $parts = [];
+                    if (!empty($file)) {
+                        $parts[] = $file . (!empty($line) ? ":{$line}" : '');
+                    }
+                    if (!empty($cls) || !empty($func)) {
+                        $parts[] = trim(($cls ? $cls . '::' : '') . ($func ?: '')) . '()';
+                    }
+                    $lineStr = implode(' — ', $parts);
+                    $message .= "```\n{$lineStr}\n```\n";
+                } else {
+                    $message .= "```\n{$trace}\n```\n";
+                }
             }
         }
 
