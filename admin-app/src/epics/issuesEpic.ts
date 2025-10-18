@@ -99,7 +99,7 @@ const ignoreIssueEpic: Epic = (action$) =>
         url,
         method: 'POST',
         headers: getApiHeaders(),
-        body: { reason: action.payload.reason },
+        // Một số hosting trả 415 khi body JSON; ignore cho phép không cần body
       }).pipe(
         mergeMap(() =>
           of(

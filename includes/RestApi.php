@@ -436,7 +436,9 @@ class RestApi extends WP_REST_Controller
     public function ignoreIssue(WP_REST_Request $request)
     {
         $issueId = (int) $request->get_param('id');
-        $reason = sanitize_textarea_field($request->get_param('reason') ?? '');
+        // Một số host trả 415 khi body JSON; chấp nhận cả form/body rỗng
+        $reasonParam = $request->get_param('reason');
+        $reason = is_string($reasonParam) ? sanitize_textarea_field($reasonParam) : '';
 
         if (!$issueId) {
             return new WP_Error('invalid_id', 'Invalid issue ID', ['status' => 400]);
@@ -463,7 +465,8 @@ class RestApi extends WP_REST_Controller
     public function resolveIssue(WP_REST_Request $request)
     {
         $issueId = (int) $request->get_param('id');
-        $notes = sanitize_textarea_field($request->get_param('notes') ?? '');
+        $notesParam = $request->get_param('notes');
+        $notes = is_string($notesParam) ? sanitize_textarea_field($notesParam) : '';
 
         if (!$issueId) {
             return new WP_Error('invalid_id', 'Invalid issue ID', ['status' => 400]);

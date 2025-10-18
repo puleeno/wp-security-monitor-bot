@@ -2653,10 +2653,13 @@ class Bot extends MonitorAbstract
             }
         }
 
-        // Server load
+        // Server load (gắn nhãn: CPU/Memory/Diskspace theo yêu cầu hiển thị)
         if (isset($performanceData['server_load']) && !empty($performanceData['server_load'])) {
             $load = $performanceData['server_load'];
-            $message .= "• Server load: {$load['1min']} / {$load['5min']} / {$load['15min']}\n";
+            $l1 = $load['1min'] ?? '-';
+            $l5 = $load['5min'] ?? '-';
+            $l15 = $load['15min'] ?? '-';
+            $message .= "• Server load: {$l1} (CPU) / {$l5} (Memory) / {$l15} (Diskspace)\n";
         }
 
         // Backtrace (top 5)
