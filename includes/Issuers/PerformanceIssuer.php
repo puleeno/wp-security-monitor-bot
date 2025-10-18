@@ -59,6 +59,16 @@ class PerformanceIssuer extends RealtimeIssuerAbstract
      */
     private $logged = false;
 
+    /**
+     * @var array Context information (route, ajax action, screen, template)
+     */
+    private $context = [];
+
+    /**
+     * @var array Last hooks executed (name, t)
+     */
+    private $lastHooks = [];
+
     public function __construct()
     {
         // Record start time và memory
@@ -81,6 +91,22 @@ class PerformanceIssuer extends RealtimeIssuerAbstract
         if (defined('SAVEQUERIES') && SAVEQUERIES) {
             add_filter('query', [$this, 'logQuery'], 10, 1);
         }
+
+        // Track route/context
+        add_action('init', [$this, 'detectContext'], 1);
+        add_filter('template_include', function($template) {
+            $this->context['template'] = $template;
+            return $template;
+        }, 1);
+        if (function_exists('rest_get_server')) {
+            add_filter('rest_pre_dispatch', function($result, $server, $request) {
+                $this->context['rest_route'] = method_exists($request, 'get_route') ? $request->get_route() : '';
+                return $result;
+            }, 10, 3);
+        }
+
+        // Track last hooks (best-effort, capped)
+        add_filter('all', [$this, 'trackHookTimings'], 9999);
     }
 
     /**
@@ -127,6 +153,12 @@ class PerformanceIssuer extends RealtimeIssuerAbstract
         // Get backtrace
         $backtrace = $this->captureBacktrace();
 
+        // Build absolute URL if possible
+        $reqUri = $_SERVER['REQUEST_URI'] ?? '';
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $fullUrl = (!empty($host) && !empty($reqUri)) ? ($scheme . '://' . $host . $reqUri) : ($reqUri ?: '');
+
         // Build issue data
         $issueData = [
             'type' => 'slow_performance',
@@ -143,7 +175,7 @@ class PerformanceIssuer extends RealtimeIssuerAbstract
             'memory_used_bytes' => $memoryUsed,
             'peak_memory' => $this->formatBytes($peakMemory),
             'peak_memory_bytes' => $peakMemory,
-            'url' => $_SERVER['REQUEST_URI'] ?? '',
+            'url' => $fullUrl,
             'method' => $_SERVER['REQUEST_METHOD'] ?? 'GET',
             'ip_address' => $_SERVER['REMOTE_ADDR'] ?? '',
             'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
@@ -154,6 +186,8 @@ class PerformanceIssuer extends RealtimeIssuerAbstract
             'slow_queries' => $slowQueries,
             'total_queries' => count($this->queries),
             'server_load' => $this->getServerLoad(),
+            'context' => $this->context,
+            'last_hooks' => array_slice($this->lastHooks, -10),
         ];
 
         // Trigger action để Bot xử lý
@@ -212,6 +246,44 @@ class PerformanceIssuer extends RealtimeIssuerAbstract
         }
 
         return $frames;
+    }
+
+    /**
+     * Detect request context (admin/rest/ajax/cron/frontend)
+     */
+    public function detectContext(): void
+    {
+        $this->context['is_admin'] = function_exists('is_admin') ? is_admin() : false;
+        $this->context['is_ajax'] = function_exists('wp_doing_ajax') ? wp_doing_ajax() : (defined('DOING_AJAX') && DOING_AJAX);
+        $this->context['is_cron'] = (defined('DOING_CRON') && DOING_CRON);
+        $this->context['is_rest'] = (defined('REST_REQUEST') && REST_REQUEST);
+
+        if (function_exists('get_current_screen')) {
+            try {
+                $screen = get_current_screen();
+                if ($screen) {
+                    $this->context['screen'] = $screen->id;
+                }
+            } catch (\Exception $e) {
+                // ignore
+            }
+        }
+
+        if (!empty($_REQUEST['action'])) {
+            $this->context['ajax_action'] = sanitize_text_field($_REQUEST['action']);
+        }
+    }
+
+    /**
+     * Track last hooks executed for context
+     */
+    public function trackHookTimings($tag): void
+    {
+        // Avoid recording too many entries
+        if (count($this->lastHooks) > 100) {
+            array_shift($this->lastHooks);
+        }
+        $this->lastHooks[] = [ 'hook' => (string)$tag, 't' => microtime(true) ];
     }
 
     /**
