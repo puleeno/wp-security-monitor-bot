@@ -239,7 +239,7 @@ class WhitelistManager
         $domainData = $pending[$domain];
 
         // Thêm vào rejected table
-        $rejectedTable = $wpdb->prefix . 'security_monitor_rejected_domains';
+        $rejectedTable = $wpdb->prefix . 'security_monitor_redirect_domains';
         $result = $wpdb->insert(
             $rejectedTable,
             [
@@ -470,7 +470,7 @@ class WhitelistManager
     {
         global $wpdb;
 
-        $rejectedTable = $wpdb->prefix . 'security_monitor_rejected_domains';
+        $rejectedTable = $wpdb->prefix . 'security_monitor_redirect_domains';
 
         $results = $wpdb->get_results($wpdb->prepare(
             "SELECT * FROM {$rejectedTable}
@@ -498,7 +498,7 @@ class WhitelistManager
     {
         global $wpdb;
 
-        $rejectedTable = $wpdb->prefix . 'security_monitor_rejected_domains';
+        $rejectedTable = $wpdb->prefix . 'security_monitor_redirect_domains';
 
         $count = $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM {$rejectedTable} WHERE domain = %s",
@@ -518,7 +518,7 @@ class WhitelistManager
     {
         global $wpdb;
 
-        $rejectedTable = $wpdb->prefix . 'security_monitor_rejected_domains';
+        $rejectedTable = $wpdb->prefix . 'security_monitor_redirect_domains';
 
         $result = $wpdb->delete(
             $rejectedTable,
@@ -547,7 +547,7 @@ class WhitelistManager
         $pending = $this->getPendingDomains();
 
         // Đếm rejected domains từ database table
-        $rejectedTable = $wpdb->prefix . 'security_monitor_rejected_domains';
+        $rejectedTable = $wpdb->prefix . 'security_monitor_redirect_domains';
         $rejectedCount = $wpdb->get_var("SELECT COUNT(*) FROM {$rejectedTable}");
 
         $stats = [

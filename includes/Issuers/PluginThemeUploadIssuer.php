@@ -96,11 +96,7 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
      */
     public function scanAfterUnzip($result, $file, $to, $needed_dirs)
     {
-
         if (!$this->isEnabled()) {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[WP Security Monitor] Issuer is DISABLED - skipping scan');
-            }
             return $result;
         }
 
@@ -114,11 +110,6 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
 
         if (!empty($findings)) {
             $fileName = basename($file);
-
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[WP Security Monitor] MALICIOUS PLUGIN/THEME BLOCKED: ' . $fileName);
-                error_log('[WP Security Monitor] Found ' . count($findings) . ' malicious files');
-            }
 
             // Gửi alert TRƯỚC KHI return WP_Error
             $type = (strpos($file, 'plugin') !== false || strpos($to, 'plugin') !== false) ? 'plugin' : 'theme';
@@ -157,14 +148,7 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
         $findings = [];
 
         if (!is_dir($dir)) {
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[WP Security Monitor] Directory does not exist: ' . $dir);
-            }
             return $findings;
-        }
-
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[WP Security Monitor] Scanning directory: ' . $dir);
         }
 
         $filesScanned = 0;
@@ -203,16 +187,8 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
                     // Store relative path for better readability
                     $relativePath = str_replace($dir . DIRECTORY_SEPARATOR, '', $file->getPathname());
                     $findings[$relativePath] = $fileFindings;
-
-                    if (defined('WP_DEBUG') && WP_DEBUG) {
-                        error_log('[WP Security Monitor] Malicious file found: ' . $relativePath . ' - ' . count($fileFindings) . ' patterns');
-                    }
                 }
             }
-        }
-
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[WP Security Monitor] Directory scan completed. Files scanned: ' . $filesScanned . ', Findings: ' . count($findings));
         }
 
         return $findings;
@@ -309,11 +285,6 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
      */
     private function sendAlert(string $type, string $name, array $findings): void
     {
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[WP Security Monitor] MALICIOUS ' . strtoupper($type) . ' DETECTED: ' . $name);
-            error_log('[WP Security Monitor] Sending realtime alert...');
-        }
-
         // Realtime issuer - gửi notification trực tiếp
         $bot = \Puleeno\SecurityBot\WebMonitor\Bot::getInstance();
         if ($bot) {
@@ -391,14 +362,9 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
                     $telegramChannel = \Puleeno\SecurityBot\WebMonitor\Channels\TelegramChannel::getInstance();
                     if ($telegramChannel && $telegramChannel->isAvailable()) {
                         $telegramChannel->send($message, $context);
-                        if (defined('WP_DEBUG') && WP_DEBUG) {
-                            error_log('[WP Security Monitor] Realtime notification sent via Telegram');
-                        }
                     }
                 } catch (\Exception $e) {
-                    if (defined('WP_DEBUG') && WP_DEBUG) {
-                        error_log('[WP Security Monitor] Failed to send realtime notification: ' . $e->getMessage());
-                    }
+                    // Silent fail
                 }
             }
         }

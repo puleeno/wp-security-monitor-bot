@@ -565,13 +565,48 @@ class IssueManager
      */
     private function extractTitle(array $issueData): string
     {
-        return $issueData['message'] ?? $issueData['title'] ?? 'Unknown Issue';
+        // Priority 1: Explicit title/message
+        if (isset($issueData['title'])) {
+            return $issueData['title'];
+        }
+        if (isset($issueData['message'])) {
+            return $issueData['message'];
+        }
+
+        // Priority 2: Generate title from redirect data
+        if (isset($issueData['to_url'])) {
+            $domain = parse_url($issueData['to_url'], PHP_URL_HOST) ?? $issueData['to_url'];
+            return sprintf('Suspicious Redirect to %s', $domain);
+        }
+
+        // Priority 3: Generate from other common fields
+        if (isset($issueData['username'])) {
+            return sprintf('Security Issue: %s', $issueData['username']);
+        }
+
+        return 'Unknown Issue';
     }
 
     private function extractDescription(array $issueData): string
     {
         if (isset($issueData['description'])) {
             return is_string($issueData['description']) ? $issueData['description'] : json_encode($issueData['description'], JSON_UNESCAPED_UNICODE);
+        }
+
+        // Generate description from redirect data
+        if (isset($issueData['to_url'])) {
+            $method = $issueData['method'] ?? 'unknown';
+            $fromUrl = $issueData['from_url'] ?? 'unknown';
+            $status = $issueData['status'] ?? '';
+
+            $desc = sprintf('Redirect from %s to %s', $fromUrl, $issueData['to_url']);
+            if ($method !== 'unknown') {
+                $desc .= sprintf(' via %s', $method);
+            }
+            if ($status) {
+                $desc .= sprintf(' (HTTP %s)', $status);
+            }
+            return $desc;
         }
 
         if (isset($issueData['details'])) {

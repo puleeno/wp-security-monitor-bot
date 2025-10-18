@@ -160,6 +160,15 @@ class RestApi extends WP_REST_Controller
             ],
         ]);
 
+        // Reject redirect by domain name
+        register_rest_route($this->namespace, '/redirects/(?P<domain>[a-zA-Z0-9\-\.]+)/reject', [
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'rejectRedirectByDomain'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
+
         // Bot control endpoints
         register_rest_route($this->namespace, '/bot/start', [
             [
@@ -833,7 +842,46 @@ class RestApi extends WP_REST_Controller
     public function rejectRedirect(WP_REST_Request $request)
     {
         global $wpdb;
-        $domain = $request->get_param('id'); // Actually domain name
+        $id = $request->get_param('id'); // Numeric ID
+        $reason = sanitize_textarea_field($request->get_param('reason') ?? '');
+        $table = $wpdb->prefix . 'security_monitor_redirect_domains';
+
+        $updated = $wpdb->update(
+            $table,
+            [
+                'status' => 'rejected',
+                'reject_reason' => $reason,
+                'rejected_by' => get_current_user_id(),
+                'rejected_at' => current_time('mysql')
+            ],
+            ['id' => $id],
+            ['%s', '%s', '%d', '%s'],
+            ['%d']
+        );
+
+        if ($updated) {
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Domain rejected successfully',
+            ], 200);
+        }
+
+        return new WP_REST_Response([
+            'success' => false,
+            'message' => 'Failed to reject domain',
+        ], 200);
+    }
+
+    /**
+     * Reject redirect by domain name
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function rejectRedirectByDomain(WP_REST_Request $request)
+    {
+        global $wpdb;
+        $domain = $request->get_param('domain');
         $reason = sanitize_textarea_field($request->get_param('reason') ?? '');
         $table = $wpdb->prefix . 'security_monitor_redirect_domains';
 
@@ -853,14 +901,14 @@ class RestApi extends WP_REST_Controller
         if ($updated) {
             return new WP_REST_Response([
                 'success' => true,
-                'message' => 'Domain rejected successfully',
+                'message' => sprintf('Domain "%s" rejected successfully', $domain),
             ], 200);
         }
 
         return new WP_REST_Response([
             'success' => false,
-            'message' => 'Failed to reject domain',
-        ], 200);
+            'message' => sprintf('Failed to reject domain "%s". Domain may not exist.', $domain),
+        ], 400);
     }
 
     /**

@@ -893,11 +893,9 @@ class Bot extends MonitorAbstract
      */
     private function formatNotificationMessage(string $issuerName, array $issueData): string
     {
-        // Debug logging
-        if (WP_DEBUG) {
-            error_log("[Bot] formatNotificationMessage() - issuerName: " . $issuerName);
-            error_log("[Bot] formatNotificationMessage() - issueData: " . json_encode($issueData));
-        }
+        // Debug logging - ALWAYS LOG for debugging
+        error_log("[Bot] formatNotificationMessage() - issuerName: " . $issuerName);
+        error_log("[Bot] formatNotificationMessage() - issueData: " . json_encode($issueData));
 
         $title = $issueData['title'] ?? 'Security Issue Detected';
         $description = $issueData['description'] ?? 'A security issue has been detected';
@@ -934,7 +932,44 @@ class Bot extends MonitorAbstract
         $typeIcon = $typeEmoji[$type] ?? '🔔';
 
         // Format message dựa vào type
-        if ($type === 'failed_login_attempts') {
+        if ($type === 'redirect' || $issuerName === 'RealtimeRedirectIssuer') {
+            // Redirect details
+            $toUrl = $issueData['to_url'] ?? 'unknown';
+            $fromUrl = $issueData['from_url'] ?? 'unknown';
+            $method = $issueData['method'] ?? 'unknown';
+            $statusCode = $issueData['status'] ?? 'unknown';
+            $userId = $issueData['user_id'] ?? 0;
+            $referer = $issueData['referer'] ?? '';
+
+            $message = "🔀 *CẢNH BÁO REDIRECT*\n\n";
+            $message .= "*Phát hiện redirect đáng ngờ*\n\n";
+            $message .= "🎯 *Đích đến:*\n`{$toUrl}`\n\n";
+            $message .= "📍 *Từ URL:* `{$fromUrl}`\n";
+            $message .= "⚙️ *Phương thức:* `{$method}`\n";
+            if ($statusCode && $statusCode !== 'unknown') {
+                $message .= "📊 *HTTP Status:* `{$statusCode}`\n";
+            }
+
+            if ($userId > 0) {
+                $user = get_userdata($userId);
+                if ($user) {
+                    $message .= "\n👤 *User:* {$user->display_name} (@{$user->user_login})\n";
+                    $message .= "🔑 *Roles:* " . implode(', ', $user->roles) . "\n";
+                }
+            } else {
+                $message .= "\n👤 *User:* Guest (chưa đăng nhập)\n";
+            }
+
+            if (!empty($ipAddress)) {
+                $message .= "🌐 *IP Address:* `{$ipAddress}`\n";
+            }
+
+            if (!empty($referer) && $referer !== 'unknown') {
+                $message .= "🔗 *Referer:* `{$referer}`\n";
+            }
+
+            $message .= "\n⚠️ *Mức độ:* {$severityIcon} *" . strtoupper($severity) . "*";
+        } else if ($type === 'failed_login_attempts') {
             $message = "🚨 *CẢNH BÁO BẢO MẬT*\n\n";
             $message .= "🔐 *Phát hiện nhiều lần đăng nhập thất bại*\n\n";
             $message .= "👤 Username: *{$username}*\n";
@@ -1685,7 +1720,8 @@ class Bot extends MonitorAbstract
 
                 foreach ($this->channels as $channelName => $channel) {
                     if ($channel->isAvailable()) {
-                        $message = $this->formatNotificationMessage('RealtimeRedirectIssuer', $issue);
+                        // Pass issueData (details) thay vì issue để có đầy đủ thông tin
+                        $message = $this->formatNotificationMessage('RealtimeRedirectIssuer', $issueData);
                         $context = [
                             'issuer' => 'RealtimeRedirectIssuer',
                             'issue_data' => $issueData,

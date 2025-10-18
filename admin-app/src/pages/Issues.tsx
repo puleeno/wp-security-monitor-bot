@@ -424,23 +424,122 @@ const Issues: React.FC = () => {
               );
             })()}
 
-            {/* Metadata (raw_data) */}
-            {selectedIssue.raw_data && Object.keys(selectedIssue.raw_data).length > 0 && (
-              <Collapse defaultActiveKey={[]}>
-                <Panel header="📊 Metadata" key="metadata">
-                  <pre style={{
-                    background: '#f5f5f5',
-                    padding: '12px',
-                    borderRadius: '4px',
-                    overflow: 'auto',
-                    fontSize: '12px',
-                    maxHeight: '400px'
-                  }}>
-                    {JSON.stringify(selectedIssue.raw_data, null, 2)}
-                  </pre>
-                </Panel>
-              </Collapse>
-            )}
+            {/* Metadata */}
+            {(() => {
+              const hasMetadata = selectedIssue.metadata && Object.keys(selectedIssue.metadata).length > 0;
+              const hasRawData = selectedIssue.raw_data && Object.keys(selectedIssue.raw_data).length > 0;
+
+              if (!hasMetadata && !hasRawData) return null;
+
+              return (
+                <Collapse defaultActiveKey={['metadata']}>
+                  <Panel header="📊 Metadata" key="metadata">
+                    <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                      {/* Upload Metadata */}
+                      {hasMetadata && selectedIssue.metadata && (
+                        <div>
+                          <Title level={5} style={{ marginBottom: 12 }}>🔍 Upload Information</Title>
+                          <div style={{
+                            background: '#f9f9f9',
+                            padding: '16px',
+                            borderRadius: '8px',
+                            border: '1px solid #e8e8e8'
+                          }}>
+                            {selectedIssue.metadata?.uploader_id && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>👤 Uploader:</Text>{' '}
+                                <Text>
+                                  {selectedIssue.metadata?.uploader_display_name} ({selectedIssue.metadata?.uploader_login})
+                                </Text>
+                              </div>
+                            )}
+                            {selectedIssue.metadata?.uploader_email && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>📧 Email:</Text>{' '}
+                                <Text copyable>{selectedIssue.metadata?.uploader_email}</Text>
+                              </div>
+                            )}
+                            {selectedIssue.metadata?.ip_address && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>🌐 IP Address:</Text>{' '}
+                                <Text code>{selectedIssue.metadata?.ip_address}</Text>
+                              </div>
+                            )}
+                            {selectedIssue.metadata?.user_agent && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>💻 User Agent:</Text>{' '}
+                                <Text style={{ fontSize: '11px', color: '#666' }}>
+                                  {selectedIssue.metadata?.user_agent}
+                                </Text>
+                              </div>
+                            )}
+                            {selectedIssue.metadata?.upload_method && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>📤 Upload Method:</Text>{' '}
+                                <Tag color={
+                                  selectedIssue.metadata?.upload_method === 'web' ? 'blue' :
+                                  selectedIssue.metadata?.upload_method === 'cli' ? 'purple' : 'green'
+                                }>
+                                  {selectedIssue.metadata?.upload_method.toUpperCase()}
+                                </Tag>
+                              </div>
+                            )}
+                            {selectedIssue.metadata?.upload_time && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>⏰ Upload Time:</Text>{' '}
+                                <Text>{new Date(selectedIssue.metadata?.upload_time).toLocaleString('vi-VN')}</Text>
+                              </div>
+                            )}
+                            {selectedIssue.metadata?.referer && (
+                              <div>
+                                <Text strong>🔗 Referer:</Text>{' '}
+                                <Text code style={{ fontSize: '11px' }}>{selectedIssue.metadata?.referer}</Text>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Raw Metadata JSON */}
+                      {hasMetadata && (
+                        <div>
+                          <Title level={5} style={{ marginBottom: 12 }}>📝 Raw Metadata (JSON)</Title>
+                          <pre style={{
+                            background: '#f5f5f5',
+                            padding: '12px',
+                            borderRadius: '4px',
+                            overflow: 'auto',
+                            fontSize: '12px',
+                            maxHeight: '300px',
+                            border: '1px solid #e8e8e8'
+                          }}>
+                            {JSON.stringify(selectedIssue.metadata, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+
+                      {/* Raw Data (if different from metadata) */}
+                      {hasRawData && (
+                        <div>
+                          <Title level={5} style={{ marginBottom: 12 }}>🗃️ Additional Data</Title>
+                          <pre style={{
+                            background: '#f5f5f5',
+                            padding: '12px',
+                            borderRadius: '4px',
+                            overflow: 'auto',
+                            fontSize: '12px',
+                            maxHeight: '300px',
+                            border: '1px solid #e8e8e8'
+                          }}>
+                            {JSON.stringify(selectedIssue.raw_data, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                    </Space>
+                  </Panel>
+                </Collapse>
+              );
+            })()}
           </Space>
         )}
       </Drawer>
