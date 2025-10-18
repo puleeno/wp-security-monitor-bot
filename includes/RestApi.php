@@ -222,8 +222,8 @@ class RestApi extends WP_REST_Controller
 
     private function checkDeletePermissions(): bool
     {
-        // Chỉ allow administrator xóa issues
-        return current_user_can('delete_users') || current_user_can('administrator');
+        // Chỉ admin (manage_options) mới được xóa issues
+        return current_user_can('manage_options');
     }
 
     /**
@@ -351,11 +351,18 @@ class RestApi extends WP_REST_Controller
         $issuesTable = $wpdb->prefix . \Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_ISSUES;
         $notificationsTable = $wpdb->prefix . \Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_NOTIFICATIONS;
 
-        // Xóa notifications liên quan trước (phòng khi FK chưa được tạo)
-        $wpdb->delete($notificationsTable, [ 'issue_id' => $issueId ], [ '%d' ]);
+        // Xóa notifications liên quan trước nếu table tồn tại (phòng khi FK chưa được tạo)
+        try {
+            if (\Puleeno\SecurityBot\WebMonitor\Database\Schema::tableExists(\Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_NOTIFICATIONS)) {
+                $wpdb->delete($notificationsTable, [ 'issue_id' => $issueId ], [ '%d' ]);
+            }
+        } catch (\Exception $e) {
+            // bỏ qua lỗi khi xóa notifications để không chặn xóa issue
+        }
 
         // Xóa issue
-        return $wpdb->delete($issuesTable, [ 'id' => $issueId ], [ '%d' ]) !== false;
+        $wpdb->delete($issuesTable, [ 'id' => $issueId ], [ '%d' ]);
+        return (int)$wpdb->rows_affected > 0;
     }
 
     private function getIssueRow(int $issueId)
