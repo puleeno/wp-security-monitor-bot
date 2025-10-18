@@ -18,6 +18,12 @@ export const issuerNames: Record<string, string> = {
   'permission_changes': '🔐 Permission Changes',
   'database_changes': '💾 Database Changes',
   'wp_config_changes': '⚙️ Config Changes',
+
+  // Class name mappings (for backward compatibility)
+  'PluginThemeUploadIssuer': '☠️ Malware Upload Scanner',
+  'FatalErrorIssuer': '🚨 Fatal Error Monitor',
+  'PerformanceIssuer': '⚡ Performance Monitor',
+  'RealtimeRedirectIssuer': '🔀 Redirect Monitor',
 };
 
 // Get friendly name for issuer

@@ -12,7 +12,7 @@ use Puleeno\SecurityBot\WebMonitor\Abstracts\RealtimeIssuerAbstract;
  */
 class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
 {
-    protected $name = 'Plugin/Theme Upload Scanner';
+    protected $name = 'Malware Upload Scanner';
     protected $description = 'Scans uploaded plugins and themes for malicious code patterns';
 
     /**

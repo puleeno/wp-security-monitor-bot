@@ -41,10 +41,36 @@ const Issues: React.FC = () => {
   const [ignoreReason, setIgnoreReason] = useState('');
   const [resolutionNotes, setResolutionNotes] = useState('');
   const [initialLoading, setInitialLoading] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
 
+  // Initialize: Read page from URL on mount
   useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const pageFromUrl = parseInt(urlParams.get('paged') || '1', 10);
+
+    dispatch(fetchIssues({ page: pageFromUrl, filters }));
+    setIsInitialized(true);
+  }, [dispatch]);
+
+  // Update URL when page or filters change (skip on initial render)
+  useEffect(() => {
+    if (!isInitialized) return;
+
     dispatch(fetchIssues({ page: currentPage, filters }));
-  }, [dispatch, currentPage, filters]);
+
+    // Update URL when page changes (preserve existing params like 'page')
+    const urlParams = new URLSearchParams(window.location.search);
+
+    if (currentPage > 1) {
+      urlParams.set('paged', currentPage.toString());
+    } else {
+      urlParams.delete('paged'); // Remove param if page 1
+    }
+
+    // Keep hash (e.g., #issues)
+    const newUrl = `${window.location.pathname}?${urlParams.toString()}${window.location.hash}`;
+    window.history.replaceState({ page: currentPage }, '', newUrl);
+  }, [currentPage, filters, isInitialized]);
 
   useEffect(() => {
     if (!loading && items) {
