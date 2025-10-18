@@ -183,39 +183,35 @@ class PerformanceIssuer extends RealtimeIssuerAbstract
      */
     private function captureBacktrace(): array
     {
+        // Lấy backtrace dạng thô và chuẩn hoá về mảng các object có trường: file, line, function, class
         $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 20);
-        $formatted = [];
+        $frames = [];
 
-        foreach ($backtrace as $i => $trace) {
-            // Skip internal issuer calls
+        foreach ($backtrace as $trace) {
+            // Bỏ qua các frame nội bộ của issuer để tập trung vào call-site thật
             if (isset($trace['class']) && strpos($trace['class'], 'PerformanceIssuer') !== false) {
                 continue;
             }
 
-            $line = '';
-
-            if (isset($trace['file'])) {
-                $file = str_replace(ABSPATH, '', $trace['file']);
-                $line .= "#{$i} {$file}";
-
-                if (isset($trace['line'])) {
-                    $line .= ":{$trace['line']}";
-                }
-                $line .= "\n";
+            $filePath = $trace['file'] ?? null;
+            if ($filePath && defined('ABSPATH')) {
+                // Rút gọn path cho dễ đọc
+                $filePath = str_replace(ABSPATH, '', $filePath);
             }
 
-            if (isset($trace['class'])) {
-                $line .= "    {$trace['class']}{$trace['type']}{$trace['function']}()";
-            } elseif (isset($trace['function'])) {
-                $line .= "    {$trace['function']}()";
-            }
+            $frames[] = [
+                'file' => $filePath ?: null,
+                'line' => isset($trace['line']) ? (int) $trace['line'] : null,
+                'function' => isset($trace['function']) ? (string) $trace['function'] : '',
+                'class' => isset($trace['class']) ? (string) $trace['class'] : null,
+            ];
 
-            if (!empty($line)) {
-                $formatted[] = trim($line);
+            if (count($frames) >= 15) {
+                break; // Giới hạn số frame để tránh payload quá lớn
             }
         }
 
-        return $formatted;
+        return $frames;
     }
 
     /**

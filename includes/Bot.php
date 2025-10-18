@@ -420,6 +420,14 @@ class Bot extends MonitorAbstract
         // Setup Default Issuers
         $issuersConfig = get_option('wp_security_monitor_issuers_config', []);
 
+        // Chỉ khởi tạo issuers khi Bot đang chạy để tránh tạo object nặng không cần thiết
+        if (!$this->isRunning()) {
+            if (WP_DEBUG) {
+                error_log('[Bot Debug] Skipping issuers initialization because bot is stopped');
+            }
+            return;
+        }
+
         // External Redirect Issuer
         $redirectIssuer = new ExternalRedirectIssuer();
         $redirectConfig = $issuersConfig['external_redirect'] ?? ['enabled' => true];
@@ -765,17 +773,20 @@ class Bot extends MonitorAbstract
                     foreach ($detectedIssues as $issueData) {
                         $issueId = $issueManager->recordIssue($issuer->getName(), $issueData, $issuer);
 
-                                                // Chỉ gửi notification cho issues mới (không bị ignore)
-                        if ($issueId !== false) {
-                            // Kiểm tra xem issue có phải là mới không
-                            $issueHash = $this->generateIssueHash($issuer->getName(), $issueData);
-                            $existingId = $this->getExistingIssueId($issueHash);
+                        // recordIssue có thể trả về:
+                        //  - false: bị ignore hoặc lỗi → bỏ qua
+                        //  - số dương: ID issue (mới hoặc cập nhật)
+                        //  - số âm:  -ID issue (cần notify lại trên redetection)
+                        if ($issueId === false) {
+                            continue;
+                        }
 
-                            // Chỉ gửi notification nếu issue chưa tồn tại
-                            if (!$existingId) {
-                                // Thay vì gửi ngay, thêm vào notification queue
-                                $this->queueNotificationsForIssue($issuer->getName(), $issueId, $issueData);
-                            }
+                        $actualIssueId = abs($issueId);
+                        $shouldNotify = ($issueId < 0) || $this->isNewIssue($actualIssueId);
+
+                        if ($shouldNotify) {
+                            // Thêm vào notification queue (đã có cơ chế dedup ở NotificationManager)
+                            $this->queueNotificationsForIssue($issuer->getName(), $actualIssueId, $issueData);
                         }
                     }
                 }

@@ -43,6 +43,19 @@ class NotificationManager
 
         $table = $wpdb->prefix . 'security_monitor_notifications';
 
+        // Dedup: nếu đã có bản ghi pending cùng issue_id + channel + message thì không thêm nữa
+        $existingId = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $table WHERE issue_id = %d AND channel_name = %s AND status = 'pending' AND message = %s LIMIT 1",
+            $issueId,
+            $channelName,
+            $message
+        ));
+
+        if ($existingId) {
+            $this->lastInsertedId = (int) $existingId;
+            return $this->lastInsertedId;
+        }
+
         // Insert notification record
         $result = $wpdb->insert(
             $table,
@@ -131,6 +144,7 @@ class NotificationManager
             $wpdb->prepare(
                 "SELECT * FROM $table
                 WHERE status = 'pending'
+                GROUP BY issue_id, channel_name, message
                 ORDER BY created_at ASC
                 LIMIT %d",
                 $limit
