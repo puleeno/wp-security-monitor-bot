@@ -135,6 +135,14 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             return;
         }
 
+		// Whitelist một số request hợp lệ từ Jetpack/WooCommerce REST nếu không có chỉ dấu mạnh của SQLi
+		if ($this->isTrustedJetpackRequest()) {
+			$inputs = [$_GET, $_POST];
+			if (!$this->hasStrongSqlIndicators($inputs)) {
+				return;
+			}
+		}
+
         $suspiciousParams = [];
 
         // Check GET parameters
@@ -247,6 +255,61 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         return false;
     }
 
+	/**
+	 * Chỉ dấu mạnh của SQLi (dùng để bypass whitelist các request tin cậy)
+	 */
+	private function hasStrongSqlIndicators(array $inputs): bool
+	{
+		$flat = $this->flattenToStrings($inputs);
+		foreach ($flat as $text) {
+			$lower = strtolower(urldecode(html_entity_decode($text)));
+			if (strpos($lower, "'") !== false) return true; // có escape quote
+			foreach ($this->highConfidenceTokens as $t) {
+				if (strpos($lower, $t) !== false) return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Heuristic nhận diện request Jetpack đáng tin cậy
+	 */
+	private function isTrustedJetpackRequest(): bool
+	{
+		$ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+		$host = $_SERVER['HTTP_HOST'] ?? '';
+		$ip = $_SERVER['REMOTE_ADDR'] ?? '';
+		$uri = $_SERVER['REQUEST_URI'] ?? '';
+
+		// UA chứa Jetpack
+		if (stripos($ua, 'Jetpack') === false) {
+			return false;
+		}
+
+		// Các tham số đặc trưng Jetpack/GLA sync
+		$hasJetpackParams = isset($_GET['_for']) && $_GET['_for'] === 'jetpack';
+		$hasGlaSync = isset($_GET['gla_syncable']);
+		$hasRestRoute = isset($_GET['rest_route']);
+
+		if (!($hasJetpackParams || $hasGlaSync || $hasRestRoute)) {
+			return false;
+		}
+
+		// Optionally: IP dải Automattic (không bắt buộc vì có thể thay đổi)
+		// Chỉ dùng như tín hiệu phụ nếu cần siết chặt hơn về sau
+
+		// Không thấy chỉ dấu mạnh của SQLi trong chính các tham số chữ ký
+		$signatureFields = [];
+		foreach (['token', 'signature', 'nonce', 'timestamp', 'body-hash'] as $k) {
+			if (isset($_GET[$k])) $signatureFields[] = $_GET[$k];
+		}
+		if (!empty($signatureFields) && !$this->hasStrongSqlIndicators($signatureFields)) {
+			return true;
+		}
+
+		return false;
+	}
+
     /**
      * Kiểm tra database error message
      */
@@ -274,7 +337,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         $severity = $this->calculateSeverity($suspiciousParams);
 
                 // Tạo issue với full forensic data
-        $issueManager = \Puleeno\SecurityBot\WebMonitor\IssueManager::getInstance();
+		$issueManager = \Puleeno\SecurityBot\WebMonitor\IssueManager::getInstance();
 
         $issue = ForensicHelper::createSecurityIssue(
             'sql_injection_attempt',
@@ -288,7 +351,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         );
 
         // Record dưới issuer name hiện tại
-        $issueManager->recordIssue('sql_injection_attempt', $issue);
+		$issueManager->recordIssue($this->getName(), $issue, $this);
 
         // Enhanced logging với forensic context
         ForensicHelper::logSecurityEvent(
@@ -317,7 +380,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             return;
         }
 
-        $issueManager = \Puleeno\SecurityBot\WebMonitor\IssueManager::getInstance();
+		$issueManager = \Puleeno\SecurityBot\WebMonitor\IssueManager::getInstance();
 
         $issue = ForensicHelper::createSecurityIssue(
             'database_error_sqli',
@@ -331,7 +394,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             1 // Skip this function frame
         );
 
-        $issueManager->recordIssue('database_error_sqli', $issue);
+		$issueManager->recordIssue($this->getName(), $issue, $this);
     }
 
     /**
