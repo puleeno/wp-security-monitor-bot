@@ -507,9 +507,9 @@ class BackdoorDetectionIssuer implements IssuerInterface
                 $issues = $this->createBackdoorIssues($scanResults);
 
                 // Record issues via IssueManager
-                $issueManager = new \Puleeno\SecurityBot\WebMonitor\IssueManager();
+                $issueManager = \Puleeno\SecurityBot\WebMonitor\IssueManager::getInstance();
                 foreach ($issues as $issue) {
-                    $issueManager->recordIssue($issue);
+                    $issueManager->recordIssue($this->getName(), $issue, $this);
                 }
 
                 // Log scan results
@@ -528,8 +528,8 @@ class BackdoorDetectionIssuer implements IssuerInterface
             error_log('[WP Security Monitor] Backdoor scan error: ' . $e->getMessage());
 
             // Record error as issue
-            $issueManager = new \Puleeno\SecurityBot\WebMonitor\IssueManager();
-            $issueManager->recordIssue([
+            $issueManager = \Puleeno\SecurityBot\WebMonitor\IssueManager::getInstance();
+            $issueManager->recordIssue($this->getName(), [
                 'type' => 'backdoor_scan_error',
                 'severity' => 'low',
                 'message' => 'Error during backdoor scanning',

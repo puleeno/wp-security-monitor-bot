@@ -488,7 +488,7 @@ class FunctionOverrideIssuer implements IssuerInterface
         $backtraceInfo = $this->getDetailedBacktrace();
 
         // Create issue
-        $issueManager = new \Puleeno\SecurityBot\WebMonitor\IssueManager();
+        $issueManager = \Puleeno\SecurityBot\WebMonitor\IssueManager::getInstance();
 
         $issue = [
             'type' => 'dangerous_function_call',
@@ -505,7 +505,7 @@ class FunctionOverrideIssuer implements IssuerInterface
             'debug_info' => DebugHelper::createIssueDebugInfo($this->getName())
         ];
 
-        $issueManager->recordIssue($issue);
+        $issueManager->recordIssue($this->getName(), $issue);
 
         // Enhanced logging
         error_log(sprintf(
