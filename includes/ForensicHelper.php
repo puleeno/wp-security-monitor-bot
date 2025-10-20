@@ -453,7 +453,7 @@ class ForensicHelper
             'severity' => $severity,
             'message' => $message,
             'details' => array_merge($details, $forensicData),
-            'debug_info' => DebugHelper::createIssueDebugInfo()
+            'debug_info' => DebugHelper::createIssueDebugInfo($issuerClass ?: 'Unknown Issuer')
         ];
     }
 

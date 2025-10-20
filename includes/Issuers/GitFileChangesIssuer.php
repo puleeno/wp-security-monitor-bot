@@ -125,7 +125,7 @@ class GitFileChangesIssuer implements IssuerInterface
                 'severity' => 'medium',
                 'message' => 'Error checking Git changes',
                 'details' => $e->getMessage(),
-                'debug_info' => DebugHelper::createIssueDebugInfo()
+                'debug_info' => DebugHelper::createIssueDebugInfo($this->getName())
             ];
         }
 
@@ -376,7 +376,7 @@ class GitFileChangesIssuer implements IssuerInterface
                 'files_changed' => $fileList,
                 'file_count' => count($files)
             ],
-            'debug_info' => DebugHelper::createIssueDebugInfo()
+            'debug_info' => DebugHelper::createIssueDebugInfo($this->getName())
         ];
     }
 
@@ -400,7 +400,7 @@ class GitFileChangesIssuer implements IssuerInterface
                     return sprintf('%s: %s', $this->getStatusText($f['status']), $f['file']);
                 }, $files), 0, 10)
             ],
-            'debug_info' => DebugHelper::createIssueDebugInfo()
+            'debug_info' => DebugHelper::createIssueDebugInfo($this->getName())
         ];
     }
 

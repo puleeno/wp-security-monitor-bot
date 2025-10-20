@@ -502,7 +502,7 @@ class FunctionOverrideIssuer implements IssuerInterface
                 'backtrace_info' => $backtraceInfo,
                 'timestamp' => current_time('mysql')
             ],
-            'debug_info' => DebugHelper::createIssueDebugInfo()
+            'debug_info' => DebugHelper::createIssueDebugInfo($this->getName())
         ];
 
         $issueManager->recordIssue($issue);

@@ -534,7 +534,7 @@ class BackdoorDetectionIssuer implements IssuerInterface
                 'severity' => 'low',
                 'message' => 'Error during backdoor scanning',
                 'details' => $e->getMessage(),
-                'debug_info' => DebugHelper::createIssueDebugInfo()
+                'debug_info' => DebugHelper::createIssueDebugInfo($this->getName())
             ]);
         }
     }
