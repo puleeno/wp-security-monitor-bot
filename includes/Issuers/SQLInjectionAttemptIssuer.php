@@ -148,7 +148,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
 
         // Check POST parameters
         foreach ($_POST as $key => $value) {
-            if (is_string($value) && $this->containsSQLInjection($value)) {
+            if ($this->containsSQLInjection($value)) {
                 $suspiciousParams['POST'][$key] = $value;
             }
         }
@@ -167,7 +167,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         }
 
         // Check headers
-        $headers = getallheaders();
+        $headers = function_exists('getallheaders') ? getallheaders() : [];
         if ($headers) {
             foreach ($headers as $name => $value) {
                 if ($this->containsSQLInjection($value)) {
@@ -221,17 +221,17 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
     /**
      * Kiểm tra string có chứa SQL injection pattern không
      */
-    private function containsSQLInjection(string $input): bool
+    private function containsSQLInjection($input): bool
     {
-        $input = urldecode($input); // Decode URL encoding
-        $input = html_entity_decode($input); // Decode HTML entities
-
-        foreach ($this->sqlPatterns as $pattern) {
-            if (preg_match($pattern, $input)) {
-                return true;
+        foreach ($this->flattenToStrings($input) as $text) {
+            $text = urldecode($text);
+            $text = html_entity_decode($text);
+            foreach ($this->sqlPatterns as $pattern) {
+                if (preg_match($pattern, $text)) {
+                    return true;
+                }
             }
         }
-
         return false;
     }
 
@@ -336,14 +336,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             '/into\s+outfile/i'
         ];
 
-        $allParams = '';
-        foreach ($suspiciousParams as $method => $params) {
-            if (is_array($params)) {
-                $allParams .= implode(' ', $params);
-            } else {
-                $allParams .= $params;
-            }
-        }
+        $allParams = implode(' ', $this->flattenToStrings($suspiciousParams));
 
         foreach ($criticalPatterns as $pattern) {
             if (preg_match($pattern, $allParams)) {
@@ -427,23 +420,23 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
     /**
      * Find matching SQL injection patterns
      */
-    private function findMatchingPatterns(string $input): array
+    private function findMatchingPatterns($input): array
     {
-        $matches = [];
-        $input = urldecode($input);
-        $input = html_entity_decode($input);
-
-        foreach ($this->sqlPatterns as $pattern) {
-            if (preg_match($pattern, $input, $match)) {
-                $matches[] = [
-                    'pattern' => $pattern,
-                    'match' => $match[0] ?? '',
-                    'full_match' => $match
-                ];
+        $results = [];
+        foreach ($this->flattenToStrings($input) as $text) {
+            $text = urldecode($text);
+            $text = html_entity_decode($text);
+            foreach ($this->sqlPatterns as $pattern) {
+                if (preg_match($pattern, $text, $match)) {
+                    $results[] = [
+                        'pattern' => $pattern,
+                        'match' => $match[0] ?? '',
+                        'full_match' => $match
+                    ];
+                }
             }
         }
-
-        return $matches;
+        return $results;
     }
 
     /**
@@ -485,5 +478,30 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
     public function configure(array $config): void
     {
         $this->config = array_merge($this->config, $config);
+    }
+
+    /**
+     * Làm phẳng dữ liệu mixed về mảng chuỗi để quét pattern an toàn
+     */
+    private function flattenToStrings($value): array
+    {
+        $result = [];
+        $stack = [$value];
+        while (!empty($stack)) {
+            $current = array_pop($stack);
+            if (is_array($current)) {
+                foreach ($current as $v) {
+                    $stack[] = $v;
+                }
+            } elseif (is_scalar($current) || (is_object($current) && method_exists($current, '__toString'))) {
+                $result[] = (string)$current;
+            } elseif (is_object($current)) {
+                $json = json_encode($current);
+                if (is_string($json)) {
+                    $result[] = $json;
+                }
+            }
+        }
+        return $result;
     }
 }
