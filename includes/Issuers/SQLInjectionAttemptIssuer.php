@@ -28,14 +28,13 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
      * @var array SQL injection patterns
      */
     private $sqlPatterns = [
-        // Union-based injection
-        '/union\s+select/i',
+        // Union-based injection (giữ cụm kết hợp)
         '/union\s+all\s+select/i',
+        '/union\s+select/i',
 
-        // Boolean-based blind
-        '/\s+and\s+\d+\s*=\s*\d+/i',
-        '/\s+or\s+\d+\s*=\s*\d+/i',
-        '/\s+and\s+.+\s*=\s*.+/i',
+        // Boolean-based classic
+        '/\b(or|and)\b\s+1\s*=\s*1\b/i',
+        '/\b(or|and)\b\s+\d+\s*=\s*\d+\b/i',
 
         // Time-based blind
         '/sleep\s*\(/i',
@@ -49,20 +48,16 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
 
         // Database enumeration
         '/information_schema/i',
-        '/mysql\.user/i',
-        '/sysdatabases/i',
-        '/msysaccessobjects/i',
 
-        // Command execution
+        // Dangerous functions / commands
         '/xp_cmdshell/i',
         '/sp_oacreate/i',
 
         // Comment-based
         '/\/\*.*\*\//i',
         '/--\s/i',
-        '/#.*$/m',
 
-        // Common functions
+        // File/IO
         '/load_file\s*\(/i',
         '/into\s+outfile/i',
         '/into\s+dumpfile/i',
@@ -72,14 +67,17 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         '/ascii\s*\(/i',
         '/substring\s*\(/i',
 
-        // Conditional statements
-        '/if\s*\(\s*\d+\s*=\s*\d+/i',
-        '/case\s+when/i',
-
-        // Special characters sequences
-        '/\'\s*(or|and)\s*\'/i',
-        '/\'\s*(union|select|insert|update|delete|drop)\s/i',
+        // Hex
         '/0x[0-9a-f]+/i'
+    ];
+
+    /**
+     * Các keyword có độ tin cậy cao để kích hoạt quét
+     */
+    private $highConfidenceTokens = [
+        'union select', 'union all select', 'sleep(', 'benchmark(', 'waitfor delay',
+        'updatexml(', 'extractvalue(', 'into outfile', 'into dumpfile', 'xp_cmdshell',
+        '0x', ' or 1=1', ' and 1=1'
     ];
 
     /**
@@ -226,6 +224,20 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         foreach ($this->flattenToStrings($input) as $text) {
             $text = urldecode($text);
             $text = html_entity_decode($text);
+            // Nếu là URL hoặc path, loại bỏ fragment để tránh false-positive với pattern '#...'
+            if ($this->looksLikeUrl($text)) {
+                $text = $this->stripUrlFragment($text);
+            }
+            $lower = strtolower($text);
+            $hasQuote = strpos($text, "'") !== false;
+            $hasHighConfidence = false;
+            foreach ($this->highConfidenceTokens as $t) {
+                if (strpos($lower, $t) !== false) { $hasHighConfidence = true; break; }
+            }
+            // Chỉ quét regex nặng khi có dấu nháy đơn hoặc chứa keyword mạnh
+            if (!($hasQuote || $hasHighConfidence)) {
+                continue;
+            }
             foreach ($this->sqlPatterns as $pattern) {
                 if (preg_match($pattern, $text)) {
                     return true;
@@ -426,6 +438,12 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         foreach ($this->flattenToStrings($input) as $text) {
             $text = urldecode($text);
             $text = html_entity_decode($text);
+            if ($this->looksLikeUrl($text)) { $text = $this->stripUrlFragment($text); }
+            $lower = strtolower($text);
+            $hasQuote = strpos($text, "'") !== false;
+            $hasHighConfidence = false;
+            foreach ($this->highConfidenceTokens as $t) { if (strpos($lower, $t) !== false) { $hasHighConfidence = true; break; } }
+            if (!($hasQuote || $hasHighConfidence)) { continue; }
             foreach ($this->sqlPatterns as $pattern) {
                 if (preg_match($pattern, $text, $match)) {
                     $results[] = [
@@ -503,5 +521,26 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             }
         }
         return $result;
+    }
+
+    private function looksLikeUrl(string $text): bool
+    {
+        return (bool) preg_match('~^(https?:)?//|^/|^[a-z][a-z0-9+.-]*://~i', $text);
+    }
+
+    private function stripUrlFragment(string $url): string
+    {
+        $parts = parse_url($url);
+        if (!$parts) return $url;
+        // rebuild without fragment
+        $scheme = isset($parts['scheme']) ? $parts['scheme'] . '://' : '';
+        $host = $parts['host'] ?? '';
+        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+        $user = $parts['user'] ?? '';
+        $pass = isset($parts['pass']) ? ':' . $parts['pass']  : '';
+        $pass = ($user || $pass) ? "$pass@" : '';
+        $path = $parts['path'] ?? '';
+        $query = isset($parts['query']) ? '?' . $parts['query'] : '';
+        return $scheme . $user . $pass . $host . $port . $path . $query;
     }
 }
