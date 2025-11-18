@@ -105,6 +105,11 @@ class PluginThemeUploadIssuer extends RealtimeIssuerAbstract
             return $result;
         }
 
+        // Validate parameters - ensure $file and $to are strings
+        if (!is_string($file) || !is_string($to)) {
+            return $result;
+        }
+
         // Scan extracted directory
         $findings = $this->scanDirectory($to);
 
