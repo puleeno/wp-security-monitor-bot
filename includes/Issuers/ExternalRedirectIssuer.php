@@ -173,10 +173,11 @@ class ExternalRedirectIssuer implements IssuerInterface
 
         try {
             // Kiểm tra options table
+            $currentHost = isset($_SERVER['HTTP_HOST']) ? $wpdb->esc_like($_SERVER['HTTP_HOST']) : '';
             $redirectOptions = $wpdb->get_results(
                 "SELECT option_name, option_value FROM {$wpdb->options}
                 WHERE option_value LIKE '%http%'
-                AND option_value REGEXP 'https?://[^{$_SERVER['HTTP_HOST']}]'"
+                AND option_value NOT LIKE '%{$currentHost}%'"
             );
 
             foreach ($redirectOptions as $option) {
