@@ -25,6 +25,7 @@ use Puleeno\SecurityBot\WebMonitor\Issuers\FunctionOverrideIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\FatalErrorIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\PluginThemeUploadIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\PerformanceIssuer;
+use Puleeno\SecurityBot\WebMonitor\Issuers\AdminActivityIssuer;
 use Puleeno\SecurityBot\WebMonitor\IssueManager;
 use Puleeno\SecurityBot\WebMonitor\Database\Schema;
 use Exception;
@@ -199,6 +200,9 @@ class Bot extends MonitorAbstract
 
         // Hook cho slow performance detection
         add_action('wp_security_monitor_slow_performance', [$this, 'handleSlowPerformance']);
+
+        // Hook cho admin activity detection
+        add_action('wp_security_monitor_admin_activity', [$this, 'handleAdminActivity']);
     }
 
     /**
@@ -487,19 +491,6 @@ class Bot extends MonitorAbstract
             $this->addIssuer($evalIssuer);
         }
 
-        // Setup Git File Changes Issuer (chỉ nếu shell functions available)
-        if (GitFileChangesIssuer::areShellFunctionsEnabled()) {
-            $gitIssuer = new GitFileChangesIssuer();
-            $gitConfig = $issuersConfig['git_file_changes'] ?? [
-                'enabled' => true,
-                'check_interval' => 300,
-                'max_files_per_alert' => 10
-            ];
-            $gitIssuer->configure($gitConfig);
-            if ($gitIssuer->isEnabled()) {
-                $this->addIssuer($gitIssuer);
-            }
-        }
 
         // Setup SQL Injection Attempt Issuer - HIGHEST PRIORITY
         $sqliIssuer = new SQLInjectionAttemptIssuer();
@@ -574,6 +565,16 @@ class Bot extends MonitorAbstract
         $performanceIssuer->configure($performanceConfig);
         if ($performanceIssuer->isEnabled()) {
             $this->addIssuer($performanceIssuer);
+        }
+
+        // Setup Admin Activity Issuer - REALTIME (Low Priority)
+        $adminActivityIssuer = new AdminActivityIssuer();
+        $adminActivityConfig = $issuersConfig['admin_activity'] ?? [
+            'enabled' => true
+        ];
+        $adminActivityIssuer->configure($adminActivityConfig);
+        if ($adminActivityIssuer->isEnabled()) {
+            $this->addIssuer($adminActivityIssuer);
         }
 
         if (WP_DEBUG) {
@@ -2701,6 +2702,162 @@ class Bot extends MonitorAbstract
         $message .= "\n⏰ " . current_time('d/m/Y H:i:s');
         $message .= "\n🌐 " . home_url();
         $message .= "\n\n💡 *Gợi ý:* Kiểm tra backtrace và queries để tối ưu performance";
+
+        return $message;
+    }
+
+    /**
+     * Xử lý admin activity log
+     *
+     * @param array $activityData
+     * @return void
+     */
+    public function handleAdminActivity(array $activityData): void
+    {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
+        try {
+            if (WP_DEBUG) {
+                error_log("[Bot] Handling admin activity: " . json_encode($activityData));
+            }
+
+            // Log issue ngay lập tức
+            $issueId = $this->issueManager->recordIssue(
+                'admin_activity',
+                $activityData
+            );
+
+            // Chỉ gửi notification nếu issuer được enable và config cho phép
+            // activity logs luôn là new events
+            if ($issueId) {
+                $this->ensureChannelsInitialized();
+                $notificationManager = \Puleeno\SecurityBot\WebMonitor\NotificationManager::getInstance();
+
+                foreach ($this->channels as $channelName => $channel) {
+                    if ($channel->isAvailable()) {
+                        $message = $this->formatAdminActivityMessage($activityData);
+                        $context = [
+                            'issuer' => 'AdminActivityIssuer',
+                            'issue_data' => $activityData,
+                            'timestamp' => current_time('mysql'),
+                            'is_realtime' => true
+                        ];
+
+                        $notificationManager->queueNotification(
+                            $channelName,
+                            $issueId,
+                            $message,
+                            $context
+                        );
+
+                        // Send immediately
+                        try {
+                            $channel->send($message, $context);
+                            $notificationManager->updateNotificationStatus(
+                                $notificationManager->getLastInsertedNotificationId(),
+                                'sent'
+                            );
+                        } catch (\Exception $e) {
+                            $notificationManager->updateNotificationStatus(
+                                $notificationManager->getLastInsertedNotificationId(),
+                                'failed',
+                                'Exception: ' . $e->getMessage()
+                            );
+                        }
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            error_log('WP Security Monitor: Error handling admin activity - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Format admin activity message
+     *
+     * @param array $data
+     * @return string
+     */
+    private function formatAdminActivityMessage(array $data): string
+    {
+        $title = $data['title'] ?? 'Admin Activity';
+        $description = $data['description'] ?? '';
+        $type = $data['type'] ?? 'admin_activity';
+        $username = $data['username'] ?? 'Unknown';
+        $ip = $data['ip_address'] ?? '';
+        $roles = $data['user_roles'] ?? [];
+        $method = $data['request_method'] ?? '';
+        $source = $data['request_source'] ?? '';
+
+        $icon = 'ℹ️';
+        if ($type === 'admin_login')
+            $icon = '🔑';
+        elseif ($type === 'plugin_activity')
+            $icon = '🔌';
+        elseif ($type === 'theme_activity')
+            $icon = '🎨';
+        elseif ($type === 'file_edit')
+            $icon = '✏️';
+        elseif ($type === 'widget_activity')
+            $icon = '🧩';
+
+        $message = "{$icon} *LOG HOẠT ĐỘNG ADMIN*\n\n";
+        $message .= "*{$title}*\n\n";
+        $message .= "📝 _{$description}_\n\n";
+
+        $message .= "👤 User: *{$username}*";
+        if (!empty($roles)) {
+            $message .= " (" . implode(', ', $roles) . ")";
+        }
+        $message .= "\n";
+
+        if (!empty($ip)) {
+            $message .= "🌐 IP: `{$ip}`\n";
+        }
+
+        if (!empty($method) || !empty($source)) {
+            $contextInfo = array_filter([$method, $source]);
+            $message .= "📡 Via: " . implode(' / ', $contextInfo) . "\n";
+        }
+
+        if (isset($data['details']) && is_array($data['details'])) {
+            $message .= "\n📋 *Chi tiết:*\n";
+            foreach ($data['details'] as $key => $value) {
+                if (is_scalar($value)) {
+                    $keyLabel = ucfirst(str_replace('_', ' ', $key));
+                    $message .= "• {$keyLabel}: `{$value}`\n";
+                }
+            }
+        }
+
+        // Backtrace (Top 3)
+        if (isset($data['backtrace']) && !empty($data['backtrace'])) {
+            $message .= "\n🔍 *Stack Trace (Top 3):*\n";
+            $traces = array_slice($data['backtrace'], 0, 3);
+            foreach ($traces as $trace) {
+                if (is_array($trace)) {
+                    $file = $trace['file'] ?? '';
+                    $line = $trace['line'] ?? '';
+                    $func = $trace['function'] ?? '';
+                    $cls = $trace['class'] ?? '';
+
+                    $parts = [];
+                    if (!empty($file)) {
+                        $parts[] = basename($file) . (!empty($line) ? ":{$line}" : '');
+                    }
+                    if (!empty($cls) || !empty($func)) {
+                        $parts[] = trim(($cls ? $cls . '::' : '') . ($func ?: '')) . '()';
+                    }
+                    $lineStr = implode(' - ', $parts);
+                    $message .= "```\n{$lineStr}\n```\n";
+                }
+            }
+        }
+
+        $message .= "\n⏰ " . current_time('d/m/Y H:i:s');
 
         return $message;
     }

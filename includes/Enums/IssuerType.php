@@ -73,6 +73,13 @@ class IssuerType
                 'context_needs' => ['current_user', 'admin_context', 'call_stack']
             ],
 
+            'AdminActivityIssuer' => [
+                'type' => self::TRIGGER,
+                'description' => 'Logs administrative activities (login, plugins, themes, widgets, files)',
+                'backtrace_importance' => 'low',
+                'context_needs' => ['user', 'ip', 'action_details']
+            ],
+
             // SCAN Issuers - Background threat hunting
             'BackdoorDetectionIssuer' => [
                 'type' => self::SCAN,
