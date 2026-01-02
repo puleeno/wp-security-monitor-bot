@@ -95,12 +95,6 @@ class IssuerType
                 'context_needs' => ['file_metadata', 'change_detection', 'scan_timing']
             ],
 
-            'GitFileChangesIssuer' => [
-                'type' => self::SCAN,
-                'description' => 'Scans Git history for file changes',
-                'backtrace_importance' => 'low',
-                'context_needs' => ['git_commits', 'file_changes', 'author_info']
-            ],
 
             // HYBRID Issuers - Event-triggered + validation scanning
             'ExternalRedirectIssuer' => [

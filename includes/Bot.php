@@ -18,7 +18,6 @@ use Puleeno\SecurityBot\WebMonitor\Issuers\LoginAttemptIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\FileChangeIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\AdminUserCreatedIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\EvalFunctionIssuer;
-use Puleeno\SecurityBot\WebMonitor\Issuers\GitFileChangesIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\SQLInjectionAttemptIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\BackdoorDetectionIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\RealtimeRedirectIssuer;
@@ -420,17 +419,6 @@ class Bot extends MonitorAbstract
             $this->addIssuer($evalIssuer);
         }
 
-        // Setup Git File Changes Issuer (nếu Git available)
-        $gitIssuer = new GitFileChangesIssuer();
-        $gitConfig = $issuersConfig['git_file_changes'] ?? [
-            'enabled' => true,
-            'check_interval' => 300,
-            'max_files_per_alert' => 10
-        ];
-        $gitIssuer->configure($gitConfig);
-        if ($gitIssuer->isEnabled()) {
-            $this->addIssuer($gitIssuer);
-        }
 
         // Setup SQL Injection Attempt Issuer - HIGHEST PRIORITY
         $sqliIssuer = new SQLInjectionAttemptIssuer();
