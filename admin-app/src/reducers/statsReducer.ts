@@ -32,9 +32,43 @@ const statsSlice = createSlice({
       state.loading = false;
       state.error = action.payload;
     },
+    startBot: (state) => {
+      state.loading = true;
+      state.error = null;
+    },
+    startBotSuccess: (state, action: PayloadAction<BotStats>) => {
+      state.bot = action.payload;
+      state.loading = false;
+    },
+    startBotFailure: (state, action: PayloadAction<string>) => {
+      state.loading = false;
+      state.error = action.payload;
+    },
+    stopBot: (state) => {
+      state.loading = true;
+      state.error = null;
+    },
+    stopBotSuccess: (state, action: PayloadAction<BotStats>) => {
+      state.bot = action.payload;
+      state.loading = false;
+    },
+    stopBotFailure: (state, action: PayloadAction<string>) => {
+      state.loading = false;
+      state.error = action.payload;
+    },
   },
 });
 
-export const { fetchStats, fetchStatsSuccess, fetchStatsFailure } = statsSlice.actions;
+export const {
+  fetchStats,
+  fetchStatsSuccess,
+  fetchStatsFailure,
+  startBot,
+  startBotSuccess,
+  startBotFailure,
+  stopBot,
+  stopBotSuccess,
+  stopBotFailure,
+} = statsSlice.actions;
 export default statsSlice.reducer;
 

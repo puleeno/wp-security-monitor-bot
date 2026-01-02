@@ -8,7 +8,15 @@ if (!defined('ABSPATH')) {
 }
 
 // Determine if we're in development mode
-$isDevelopment = defined('WP_DEBUG') && WP_DEBUG && file_exists(dirname(__FILE__) . '/../admin-app/package.json');
+// Ưu tiên production mode nếu built files tồn tại
+$buildDir = plugin_dir_path(dirname(__FILE__)) . 'assets/admin-app/';
+$hasBuiltFiles = file_exists($buildDir) && !empty(glob($buildDir . 'js/*.js'));
+
+// Chỉ dùng dev mode khi:
+// 1. Có constant WP_SECURITY_MONITOR_DEV_MODE = true HOẶC
+// 2. WP_DEBUG = true VÀ không có built files VÀ có package.json
+$isDevelopment = (defined('WP_SECURITY_MONITOR_DEV_MODE') && WP_SECURITY_MONITOR_DEV_MODE)
+    || (!$hasBuiltFiles && defined('WP_DEBUG') && WP_DEBUG && file_exists(dirname(__FILE__) . '/../admin-app/package.json'));
 
 if ($isDevelopment) {
     // Development mode - use Vite dev server
@@ -32,7 +40,6 @@ if ($isDevelopment) {
     <?php
 } else {
     // Production mode - load built files
-    $buildDir = plugin_dir_path(dirname(__FILE__)) . 'assets/admin-app/';
     $assetsUrl = plugin_dir_url(dirname(__FILE__)) . 'assets/admin-app/';
 
     if (!file_exists($buildDir)) {

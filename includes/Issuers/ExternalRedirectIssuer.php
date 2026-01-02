@@ -111,11 +111,22 @@ class ExternalRedirectIssuer implements IssuerInterface
             return $issues;
         }
 
+        // Get current host - skip check if HTTP_HOST is not available (CLI/cron context)
+        $currentHost = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : null;
+        if ($currentHost === null) {
+            // In CLI/cron context, try to get host from site URL
+            $currentHost = parse_url(home_url(), PHP_URL_HOST);
+            if ($currentHost === null) {
+                // If still no host, skip htaccess check
+                return $issues;
+            }
+        }
+
         // Tìm các redirect rule đáng ngờ
         $suspiciousPatterns = [
-            '/Redirect\s+30[12]\s+.*?(http|https):\/\/(?!'.preg_quote($_SERVER['HTTP_HOST'], '/').')([^\s]+)/i',
-            '/RewriteRule\s+.*?\s+.*?(http|https):\/\/(?!'.preg_quote($_SERVER['HTTP_HOST'], '/').')([^\s\]]+)/i',
-            '/Header\s+.*?Location.*?(http|https):\/\/(?!'.preg_quote($_SERVER['HTTP_HOST'], '/').')([^\s"\']+)/i'
+            '/Redirect\s+30[12]\s+.*?(http|https):\/\/(?!'.preg_quote($currentHost, '/').')([^\s]+)/i',
+            '/RewriteRule\s+.*?\s+.*?(http|https):\/\/(?!'.preg_quote($currentHost, '/').')([^\s\]]+)/i',
+            '/Header\s+.*?Location.*?(http|https):\/\/(?!'.preg_quote($currentHost, '/').')([^\s"\']+)/i'
         ];
 
         foreach ($suspiciousPatterns as $pattern) {
@@ -173,10 +184,11 @@ class ExternalRedirectIssuer implements IssuerInterface
 
         try {
             // Kiểm tra options table
+            $currentHost = isset($_SERVER['HTTP_HOST']) ? $wpdb->esc_like($_SERVER['HTTP_HOST']) : '';
             $redirectOptions = $wpdb->get_results(
                 "SELECT option_name, option_value FROM {$wpdb->options}
                 WHERE option_value LIKE '%http%'
-                AND option_value REGEXP 'https?://[^{$_SERVER['HTTP_HOST']}]'"
+                AND option_value NOT LIKE '%{$currentHost}%'"
             );
 
             foreach ($redirectOptions as $option) {
@@ -344,15 +356,36 @@ class ExternalRedirectIssuer implements IssuerInterface
             return $issues;
         }
 
+        // Get current host - skip check if HTTP_HOST is not available (CLI/cron context)
+        $currentHost = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : null;
+        if ($currentHost === null) {
+            // In CLI/cron context, try to get host from site URL
+            $currentHost = parse_url(home_url(), PHP_URL_HOST);
+        }
+
         // Các pattern đáng ngờ
-        $suspiciousPatterns = [
-            '/header\s*\(\s*[\'"]location\s*:\s*https?:\/\/(?!'.preg_quote($_SERVER['HTTP_HOST'], '/').')([^\'"]+)/i',
-            '/wp_redirect\s*\(\s*[\'"]https?:\/\/(?!'.preg_quote($_SERVER['HTTP_HOST'], '/').')([^\'"]+)/i',
-            '/window\.location\s*=\s*[\'"]https?:\/\/(?!'.preg_quote($_SERVER['HTTP_HOST'], '/').')([^\'"]+)/i',
-            '/document\.location\s*=\s*[\'"]https?:\/\/(?!'.preg_quote($_SERVER['HTTP_HOST'], '/').')([^\'"]+)/i',
-            '/eval\s*\(\s*base64_decode/i',
-            '/eval\s*\(\s*gzinflate/i'
-        ];
+        // If we have a host, exclude it from matches; otherwise match all external URLs
+        if ($currentHost) {
+            $hostPattern = preg_quote($currentHost, '/');
+            $suspiciousPatterns = [
+                '/header\s*\(\s*[\'"]location\s*:\s*https?:\/\/(?!'.$hostPattern.')([^\'"]+)/i',
+                '/wp_redirect\s*\(\s*[\'"]https?:\/\/(?!'.$hostPattern.')([^\'"]+)/i',
+                '/window\.location\s*=\s*[\'"]https?:\/\/(?!'.$hostPattern.')([^\'"]+)/i',
+                '/document\.location\s*=\s*[\'"]https?:\/\/(?!'.$hostPattern.')([^\'"]+)/i',
+                '/eval\s*\(\s*base64_decode/i',
+                '/eval\s*\(\s*gzinflate/i'
+            ];
+        } else {
+            // No host available - match all URLs (will be filtered by isExternalRedirect later)
+            $suspiciousPatterns = [
+                '/header\s*\(\s*[\'"]location\s*:\s*https?:\/\/([^\'"]+)/i',
+                '/wp_redirect\s*\(\s*[\'"]https?:\/\/([^\'"]+)/i',
+                '/window\.location\s*=\s*[\'"]https?:\/\/([^\'"]+)/i',
+                '/document\.location\s*=\s*[\'"]https?:\/\/([^\'"]+)/i',
+                '/eval\s*\(\s*base64_decode/i',
+                '/eval\s*\(\s*gzinflate/i'
+            ];
+        }
 
         foreach ($suspiciousPatterns as $pattern) {
             if (preg_match_all($pattern, $content, $matches, PREG_SET_ORDER)) {

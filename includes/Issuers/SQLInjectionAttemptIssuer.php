@@ -28,14 +28,13 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
      * @var array SQL injection patterns
      */
     private $sqlPatterns = [
-        // Union-based injection
-        '/union\s+select/i',
+        // Union-based injection (giữ cụm kết hợp)
         '/union\s+all\s+select/i',
+        '/union\s+select/i',
 
-        // Boolean-based blind
-        '/\s+and\s+\d+\s*=\s*\d+/i',
-        '/\s+or\s+\d+\s*=\s*\d+/i',
-        '/\s+and\s+.+\s*=\s*.+/i',
+        // Boolean-based classic
+        '/\b(or|and)\b\s+1\s*=\s*1\b/i',
+        '/\b(or|and)\b\s+\d+\s*=\s*\d+\b/i',
 
         // Time-based blind
         '/sleep\s*\(/i',
@@ -49,20 +48,16 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
 
         // Database enumeration
         '/information_schema/i',
-        '/mysql\.user/i',
-        '/sysdatabases/i',
-        '/msysaccessobjects/i',
 
-        // Command execution
+        // Dangerous functions / commands
         '/xp_cmdshell/i',
         '/sp_oacreate/i',
 
         // Comment-based
         '/\/\*.*\*\//i',
         '/--\s/i',
-        '/#.*$/m',
 
-        // Common functions
+        // File/IO
         '/load_file\s*\(/i',
         '/into\s+outfile/i',
         '/into\s+dumpfile/i',
@@ -72,14 +67,17 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         '/ascii\s*\(/i',
         '/substring\s*\(/i',
 
-        // Conditional statements
-        '/if\s*\(\s*\d+\s*=\s*\d+/i',
-        '/case\s+when/i',
-
-        // Special characters sequences
-        '/\'\s*(or|and)\s*\'/i',
-        '/\'\s*(union|select|insert|update|delete|drop)\s/i',
+        // Hex
         '/0x[0-9a-f]+/i'
+    ];
+
+    /**
+     * Các keyword có độ tin cậy cao để kích hoạt quét
+     */
+    private $highConfidenceTokens = [
+        'union select', 'union all select', 'sleep(', 'benchmark(', 'waitfor delay',
+        'updatexml(', 'extractvalue(', 'into outfile', 'into dumpfile', 'xp_cmdshell',
+        '0x', ' or 1=1', ' and 1=1'
     ];
 
     /**
@@ -131,10 +129,19 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             return;
         }
 
-        // Skip admin và login pages để tránh false positives
-        if (is_admin() || strpos($_SERVER['REQUEST_URI'], 'wp-login.php') !== false) {
+        // Skip admin, login pages và static assets để tránh false positives
+        $uri = $_SERVER['REQUEST_URI'] ?? '';
+        if (is_admin() || strpos($uri, 'wp-login.php') !== false || $this->isStaticAsset($uri)) {
             return;
         }
+
+		// Whitelist một số request hợp lệ từ Jetpack/WooCommerce REST nếu không có chỉ dấu mạnh của SQLi
+		if ($this->isTrustedJetpackRequest()) {
+			$inputs = [$_GET, $_POST];
+			if (!$this->hasStrongSqlIndicators($inputs)) {
+				return;
+			}
+		}
 
         $suspiciousParams = [];
 
@@ -147,7 +154,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
 
         // Check POST parameters
         foreach ($_POST as $key => $value) {
-            if (is_string($value) && $this->containsSQLInjection($value)) {
+            if ($this->containsSQLInjection($value)) {
                 $suspiciousParams['POST'][$key] = $value;
             }
         }
@@ -166,7 +173,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         }
 
         // Check headers
-        $headers = getallheaders();
+        $headers = function_exists('getallheaders') ? getallheaders() : [];
         if ($headers) {
             foreach ($headers as $name => $value) {
                 if ($this->containsSQLInjection($value)) {
@@ -220,19 +227,88 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
     /**
      * Kiểm tra string có chứa SQL injection pattern không
      */
-    private function containsSQLInjection(string $input): bool
+    private function containsSQLInjection($input): bool
     {
-        $input = urldecode($input); // Decode URL encoding
-        $input = html_entity_decode($input); // Decode HTML entities
-
-        foreach ($this->sqlPatterns as $pattern) {
-            if (preg_match($pattern, $input)) {
-                return true;
+        foreach ($this->flattenToStrings($input) as $text) {
+            $text = urldecode($text);
+            $text = html_entity_decode($text);
+            // Nếu là URL hoặc path, loại bỏ fragment để tránh false-positive với pattern '#...'
+            if ($this->looksLikeUrl($text)) {
+                $text = $this->stripUrlFragment($text);
+            }
+            $lower = strtolower($text);
+            $hasQuote = strpos($text, "'") !== false;
+            $hasHighConfidence = false;
+            foreach ($this->highConfidenceTokens as $t) {
+                if (strpos($lower, $t) !== false) { $hasHighConfidence = true; break; }
+            }
+            // Chỉ quét regex nặng khi có dấu nháy đơn hoặc chứa keyword mạnh
+            if (!($hasQuote || $hasHighConfidence)) {
+                continue;
+            }
+            foreach ($this->sqlPatterns as $pattern) {
+                if (preg_match($pattern, $text)) {
+                    return true;
+                }
             }
         }
-
         return false;
     }
+
+	/**
+	 * Chỉ dấu mạnh của SQLi (dùng để bypass whitelist các request tin cậy)
+	 */
+	private function hasStrongSqlIndicators(array $inputs): bool
+	{
+		$flat = $this->flattenToStrings($inputs);
+		foreach ($flat as $text) {
+			$lower = strtolower(urldecode(html_entity_decode($text)));
+			if (strpos($lower, "'") !== false) return true; // có escape quote
+			foreach ($this->highConfidenceTokens as $t) {
+				if (strpos($lower, $t) !== false) return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Heuristic nhận diện request Jetpack đáng tin cậy
+	 */
+	private function isTrustedJetpackRequest(): bool
+	{
+		$ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+		$host = $_SERVER['HTTP_HOST'] ?? '';
+		$ip = $_SERVER['REMOTE_ADDR'] ?? '';
+		$uri = $_SERVER['REQUEST_URI'] ?? '';
+
+		// UA chứa Jetpack
+		if (stripos($ua, 'Jetpack') === false) {
+			return false;
+		}
+
+		// Các tham số đặc trưng Jetpack/GLA sync
+		$hasJetpackParams = isset($_GET['_for']) && $_GET['_for'] === 'jetpack';
+		$hasGlaSync = isset($_GET['gla_syncable']);
+		$hasRestRoute = isset($_GET['rest_route']);
+
+		if (!($hasJetpackParams || $hasGlaSync || $hasRestRoute)) {
+			return false;
+		}
+
+		// Optionally: IP dải Automattic (không bắt buộc vì có thể thay đổi)
+		// Chỉ dùng như tín hiệu phụ nếu cần siết chặt hơn về sau
+
+		// Không thấy chỉ dấu mạnh của SQLi trong chính các tham số chữ ký
+		$signatureFields = [];
+		foreach (['token', 'signature', 'nonce', 'timestamp', 'body-hash'] as $k) {
+			if (isset($_GET[$k])) $signatureFields[] = $_GET[$k];
+		}
+		if (!empty($signatureFields) && !$this->hasStrongSqlIndicators($signatureFields)) {
+			return true;
+		}
+
+		return false;
+	}
 
     /**
      * Kiểm tra database error message
@@ -261,7 +337,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
         $severity = $this->calculateSeverity($suspiciousParams);
 
                 // Tạo issue với full forensic data
-        $issueManager = new \Puleeno\SecurityBot\WebMonitor\IssueManager();
+		$issueManager = \Puleeno\SecurityBot\WebMonitor\IssueManager::getInstance();
 
         $issue = ForensicHelper::createSecurityIssue(
             'sql_injection_attempt',
@@ -274,7 +350,8 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             1 // Skip this function frame
         );
 
-        $issueManager->recordIssue($issue);
+        // Record dưới issuer name hiện tại
+		$issueManager->recordIssue($this->getName(), $issue, $this);
 
         // Enhanced logging với forensic context
         ForensicHelper::logSecurityEvent(
@@ -303,7 +380,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             return;
         }
 
-                $issueManager = new \Puleeno\SecurityBot\WebMonitor\IssueManager();
+		$issueManager = \Puleeno\SecurityBot\WebMonitor\IssueManager::getInstance();
 
         $issue = ForensicHelper::createSecurityIssue(
             'database_error_sqli',
@@ -317,7 +394,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             1 // Skip this function frame
         );
 
-        $issueManager->recordIssue($issue);
+		$issueManager->recordIssue($this->getName(), $issue, $this);
     }
 
     /**
@@ -334,14 +411,7 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
             '/into\s+outfile/i'
         ];
 
-        $allParams = '';
-        foreach ($suspiciousParams as $method => $params) {
-            if (is_array($params)) {
-                $allParams .= implode(' ', $params);
-            } else {
-                $allParams .= $params;
-            }
-        }
+        $allParams = implode(' ', $this->flattenToStrings($suspiciousParams));
 
         foreach ($criticalPatterns as $pattern) {
             if (preg_match($pattern, $allParams)) {
@@ -425,23 +495,29 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
     /**
      * Find matching SQL injection patterns
      */
-    private function findMatchingPatterns(string $input): array
+    private function findMatchingPatterns($input): array
     {
-        $matches = [];
-        $input = urldecode($input);
-        $input = html_entity_decode($input);
-
-        foreach ($this->sqlPatterns as $pattern) {
-            if (preg_match($pattern, $input, $match)) {
-                $matches[] = [
-                    'pattern' => $pattern,
-                    'match' => $match[0] ?? '',
-                    'full_match' => $match
-                ];
+        $results = [];
+        foreach ($this->flattenToStrings($input) as $text) {
+            $text = urldecode($text);
+            $text = html_entity_decode($text);
+            if ($this->looksLikeUrl($text)) { $text = $this->stripUrlFragment($text); }
+            $lower = strtolower($text);
+            $hasQuote = strpos($text, "'") !== false;
+            $hasHighConfidence = false;
+            foreach ($this->highConfidenceTokens as $t) { if (strpos($lower, $t) !== false) { $hasHighConfidence = true; break; } }
+            if (!($hasQuote || $hasHighConfidence)) { continue; }
+            foreach ($this->sqlPatterns as $pattern) {
+                if (preg_match($pattern, $text, $match)) {
+                    $results[] = [
+                        'pattern' => $pattern,
+                        'match' => $match[0] ?? '',
+                        'full_match' => $match
+                    ];
+                }
             }
         }
-
-        return $matches;
+        return $results;
     }
 
     /**
@@ -451,6 +527,18 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
     {
         header('HTTP/1.1 403 Forbidden');
         die('Request blocked due to suspicious activity.');
+    }
+
+    private function isStaticAsset(string $uri): bool
+    {
+        $path = parse_url($uri, PHP_URL_PATH) ?: $uri;
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        if (!$ext) return false;
+        $staticExts = [
+            'jpg','jpeg','png','gif','svg','webp','ico',
+            'css','js','map','woff','woff2','ttf','eot','otf','mp4','webm','ogg','mp3','wav'
+        ];
+        return in_array($ext, $staticExts, true);
     }
 
     public function getName(): string
@@ -471,5 +559,51 @@ class SQLInjectionAttemptIssuer implements IssuerInterface
     public function configure(array $config): void
     {
         $this->config = array_merge($this->config, $config);
+    }
+
+    /**
+     * Làm phẳng dữ liệu mixed về mảng chuỗi để quét pattern an toàn
+     */
+    private function flattenToStrings($value): array
+    {
+        $result = [];
+        $stack = [$value];
+        while (!empty($stack)) {
+            $current = array_pop($stack);
+            if (is_array($current)) {
+                foreach ($current as $v) {
+                    $stack[] = $v;
+                }
+            } elseif (is_scalar($current) || (is_object($current) && method_exists($current, '__toString'))) {
+                $result[] = (string)$current;
+            } elseif (is_object($current)) {
+                $json = json_encode($current);
+                if (is_string($json)) {
+                    $result[] = $json;
+                }
+            }
+        }
+        return $result;
+    }
+
+    private function looksLikeUrl(string $text): bool
+    {
+        return (bool) preg_match('~^(https?:)?//|^/|^[a-z][a-z0-9+.-]*://~i', $text);
+    }
+
+    private function stripUrlFragment(string $url): string
+    {
+        $parts = parse_url($url);
+        if (!$parts) return $url;
+        // rebuild without fragment
+        $scheme = isset($parts['scheme']) ? $parts['scheme'] . '://' : '';
+        $host = $parts['host'] ?? '';
+        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+        $user = $parts['user'] ?? '';
+        $pass = isset($parts['pass']) ? ':' . $parts['pass']  : '';
+        $pass = ($user || $pass) ? "$pass@" : '';
+        $path = $parts['path'] ?? '';
+        $query = isset($parts['query']) ? '?' . $parts['query'] : '';
+        return $scheme . $user . $pass . $host . $port . $path . $query;
     }
 }

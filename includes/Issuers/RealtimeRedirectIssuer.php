@@ -489,7 +489,7 @@ class RealtimeRedirectIssuer implements RealtimeIssuerInterface
         $existingIssue = $wpdb->get_row($wpdb->prepare(
             "SELECT id, status, viewed, viewed_at, resolved_at, ignored_at, backtrace
              FROM $issuesTable
-             WHERE issuer = %s
+             WHERE issuer_name = %s
              AND metadata LIKE %s
              AND backtrace LIKE %s
              ORDER BY created_at DESC

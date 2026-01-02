@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import type { IssuersConfig } from '../types';
 
 interface SettingsState {
   telegram: {
@@ -17,7 +18,8 @@ interface SettingsState {
   log: {
     enabled: boolean;
   };
-  issuers: Record<string, { enabled: boolean }>;
+  issuers: IssuersConfig;
+  savequeriesEnabled: boolean;
   loading: boolean;
   error: string | null;
 }
@@ -38,6 +40,7 @@ const initialState: SettingsState = {
   },
   log: { enabled: true },
   issuers: {},
+  savequeriesEnabled: false,
   loading: false,
   error: null,
 };
@@ -86,6 +89,31 @@ const settingsSlice = createSlice({
       state.loading = false;
       state.error = action.payload;
     },
+    fetchIssuersConfig: (state) => {
+      state.loading = true;
+      state.error = null;
+    },
+    fetchIssuersConfigSuccess: (state, action: PayloadAction<{ config: IssuersConfig; savequeries_enabled: boolean }>) => {
+      state.issuers = action.payload.config;
+      state.savequeriesEnabled = action.payload.savequeries_enabled;
+      state.loading = false;
+    },
+    fetchIssuersConfigFailure: (state, action: PayloadAction<string>) => {
+      state.loading = false;
+      state.error = action.payload;
+    },
+    updateIssuersConfig: (state, _action: PayloadAction<IssuersConfig>) => {
+      state.loading = true;
+      state.error = null;
+    },
+    updateIssuersConfigSuccess: (state, action: PayloadAction<IssuersConfig>) => {
+      state.issuers = action.payload;
+      state.loading = false;
+    },
+    updateIssuersConfigFailure: (state, action: PayloadAction<string>) => {
+      state.loading = false;
+      state.error = action.payload;
+    },
   },
 });
 
@@ -96,6 +124,12 @@ export const {
   updateSettings,
   updateSettingsSuccess,
   updateSettingsFailure,
+  fetchIssuersConfig,
+  fetchIssuersConfigSuccess,
+  fetchIssuersConfigFailure,
+  updateIssuersConfig,
+  updateIssuersConfigSuccess,
+  updateIssuersConfigFailure,
 } = settingsSlice.actions;
 
 export default settingsSlice.reducer;

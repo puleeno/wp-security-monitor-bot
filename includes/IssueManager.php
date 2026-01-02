@@ -202,11 +202,13 @@ class IssueManager
             $where[] = 'is_ignored = 0';
         }
 
-        // Filter out plugin files (avoid false positives)
-        $pluginDir = dirname(dirname(__DIR__));
-        $pluginPath = wp_normalize_path($pluginDir);
-        $where[] = '(file_path IS NULL OR file_path NOT LIKE %s)';
-        $params[] = $pluginPath . '%';
+        // Filter out plugin files (avoid false positives) unless explicitly included
+        if (!$args['include_plugin_files']) {
+            $pluginDir = dirname(dirname(__DIR__));
+            $pluginPath = wp_normalize_path($pluginDir);
+            $where[] = '(file_path IS NULL OR file_path NOT LIKE %s)';
+            $params[] = $pluginPath . '%';
+        }
 
         // Pagination
         $offset = ($args['page'] - 1) * $args['per_page'];
@@ -234,10 +236,36 @@ class IssueManager
             ARRAY_A
         );
 
-        // Decode JSON fields
+        // Decode JSON fields và chuẩn hoá kiểu dữ liệu (tránh chuỗi "0"/"1" khiến frontend hiểu sai)
         foreach ($issues as &$issue) {
+            // JSON fields
             $issue['raw_data'] = is_array($issue['raw_data']) ? $issue['raw_data'] : json_decode($issue['raw_data'], true);
             $issue['metadata'] = is_array($issue['metadata']) ? $issue['metadata'] : json_decode($issue['metadata'], true);
+
+            // Numeric fields
+            if (isset($issue['id'])) {
+                $issue['id'] = (int) $issue['id'];
+            }
+            if (isset($issue['detection_count'])) {
+                $issue['detection_count'] = (int) $issue['detection_count'];
+            }
+
+            // Boolean-like tinyint fields may come back as strings "0"/"1" from MySQL
+            if (isset($issue['viewed'])) {
+                $issue['viewed'] = (bool) ((int) $issue['viewed']);
+            }
+            if (isset($issue['is_ignored'])) {
+                $issue['is_ignored'] = (bool) ((int) $issue['is_ignored']);
+            }
+
+            // Nullable numeric fields
+            foreach (['viewed_by', 'ignored_by', 'resolved_by'] as $numericNullableField) {
+                if (array_key_exists($numericNullableField, $issue)) {
+                    $issue[$numericNullableField] = is_null($issue[$numericNullableField])
+                        ? null
+                        : (int) $issue[$numericNullableField];
+                }
+            }
         }
 
         return [
@@ -565,13 +593,48 @@ class IssueManager
      */
     private function extractTitle(array $issueData): string
     {
-        return $issueData['message'] ?? $issueData['title'] ?? 'Unknown Issue';
+        // Priority 1: Explicit title/message
+        if (isset($issueData['title'])) {
+            return $issueData['title'];
+        }
+        if (isset($issueData['message'])) {
+            return $issueData['message'];
+        }
+
+        // Priority 2: Generate title from redirect data
+        if (isset($issueData['to_url'])) {
+            $domain = parse_url($issueData['to_url'], PHP_URL_HOST) ?? $issueData['to_url'];
+            return sprintf('Suspicious Redirect to %s', $domain);
+        }
+
+        // Priority 3: Generate from other common fields
+        if (isset($issueData['username'])) {
+            return sprintf('Security Issue: %s', $issueData['username']);
+        }
+
+        return 'Unknown Issue';
     }
 
     private function extractDescription(array $issueData): string
     {
         if (isset($issueData['description'])) {
             return is_string($issueData['description']) ? $issueData['description'] : json_encode($issueData['description'], JSON_UNESCAPED_UNICODE);
+        }
+
+        // Generate description from redirect data
+        if (isset($issueData['to_url'])) {
+            $method = $issueData['method'] ?? 'unknown';
+            $fromUrl = $issueData['from_url'] ?? 'unknown';
+            $status = $issueData['status'] ?? '';
+
+            $desc = sprintf('Redirect from %s to %s', $fromUrl, $issueData['to_url']);
+            if ($method !== 'unknown') {
+                $desc .= sprintf(' via %s', $method);
+            }
+            if ($status) {
+                $desc .= sprintf(' (HTTP %s)', $status);
+            }
+            return $desc;
         }
 
         if (isset($issueData['details'])) {

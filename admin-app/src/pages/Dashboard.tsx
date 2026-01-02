@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Row, Col, Statistic, Table, Tag, Space, Alert, Descriptions, Typography } from 'antd';
+import { Card, Row, Col, Statistic, Table, Tag, Space, Alert, Descriptions, Typography, Button, message } from 'antd';
 import {
   WarningOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   BellOutlined,
+  PlayCircleOutlined,
+  PauseCircleOutlined,
 } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import type { RootState, AppDispatch } from '../store';
-import { fetchStats } from '../reducers/statsReducer';
+import { fetchStats, startBot, stopBot } from '../reducers/statsReducer';
 import { fetchIssues } from '../reducers/issuesReducer';
 import { fetchSettings } from '../reducers/settingsReducer';
 import type { Issue } from '../types';
@@ -38,6 +40,16 @@ const Dashboard: React.FC = () => {
       setInitialLoading(false);
     }
   }, [security, bot, telegram]);
+
+  const handleStartBot = () => {
+    dispatch(startBot());
+    message.loading('Đang khởi động bot...', 1.5);
+  };
+
+  const handleStopBot = () => {
+    dispatch(stopBot());
+    message.loading('Đang dừng bot...', 1.5);
+  };
 
   const getSeverityColor = (severity: string): string => {
     const colors: Record<string, string> = {
@@ -248,10 +260,38 @@ const Dashboard: React.FC = () => {
         </Col>
       </Row>
 
-      {/* Bot Status */}
+      {/* Bot Status with Control */}
       {bot && (
         <Alert
-          message={bot.is_running ? `✅ ${t('dashboard.monitorStatus')}: ${t('dashboard.running')}` : `⚠️ ${t('dashboard.monitorStatus')}: ${t('dashboard.stopped')}`}
+          message={
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>
+                {bot.is_running ? `✅ ${t('dashboard.monitorStatus')}: ${t('dashboard.running')}` : `⚠️ ${t('dashboard.monitorStatus')}: ${t('dashboard.stopped')}`}
+              </span>
+              <Space>
+                {bot.is_running ? (
+                  <Button
+                    type="default"
+                    danger
+                    icon={<PauseCircleOutlined />}
+                    onClick={handleStopBot}
+                    loading={loading}
+                  >
+                    Dừng Bot
+                  </Button>
+                ) : (
+                  <Button
+                    type="primary"
+                    icon={<PlayCircleOutlined />}
+                    onClick={handleStartBot}
+                    loading={loading}
+                  >
+                    Khởi động Bot
+                  </Button>
+                )}
+              </Space>
+            </div>
+          }
           type={bot.is_running ? 'success' : 'warning'}
           showIcon
           style={{ marginBottom: 24 }}

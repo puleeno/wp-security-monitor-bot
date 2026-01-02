@@ -15,9 +15,9 @@ import type { RootState, AppDispatch } from '../store';
 import {
   fetchIssues,
   markAsViewed,
-  unmarkAsViewed,
   ignoreIssue,
   resolveIssue,
+  bulkAction,
 } from '../reducers/issuesReducer';
 import type { Issue } from '../types';
 import { getIssuerName } from '../utils/issuerNames';
@@ -30,9 +30,12 @@ const { Panel } = Collapse;
 const Issues: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { t } = useTranslation();
-  const { items, total, currentPage, perPage, loading, filters } = useSelector(
+  const { items, total, currentPage, perPage, loading, filters, bulkLoading } = useSelector(
     (state: RootState) => state.issues
   );
+
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
@@ -41,10 +44,36 @@ const Issues: React.FC = () => {
   const [ignoreReason, setIgnoreReason] = useState('');
   const [resolutionNotes, setResolutionNotes] = useState('');
   const [initialLoading, setInitialLoading] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
 
+  // Initialize: Read page from URL on mount
   useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const pageFromUrl = parseInt(urlParams.get('paged') || '1', 10);
+
+    dispatch(fetchIssues({ page: pageFromUrl, filters }));
+    setIsInitialized(true);
+  }, [dispatch]);
+
+  // Update URL when page or filters change (skip on initial render)
+  useEffect(() => {
+    if (!isInitialized) return;
+
     dispatch(fetchIssues({ page: currentPage, filters }));
-  }, [dispatch, currentPage, filters]);
+
+    // Update URL when page changes (preserve existing params like 'page')
+    const urlParams = new URLSearchParams(window.location.search);
+
+    if (currentPage > 1) {
+      urlParams.set('paged', currentPage.toString());
+    } else {
+      urlParams.delete('paged'); // Remove param if page 1
+    }
+
+    // Keep hash (e.g., #issues)
+    const newUrl = `${window.location.pathname}?${urlParams.toString()}${window.location.hash}`;
+    window.history.replaceState({ page: currentPage }, '', newUrl);
+  }, [currentPage, filters, isInitialized]);
 
   useEffect(() => {
     if (!loading && items) {
@@ -78,9 +107,7 @@ const Issues: React.FC = () => {
   };
 
   const handleMarkViewed = (issueId: number, viewed: boolean): void => {
-    if (viewed) {
-      dispatch(unmarkAsViewed(issueId));
-    } else {
+    if (!viewed) {
       dispatch(markAsViewed(issueId));
     }
   };
@@ -171,57 +198,66 @@ const Issues: React.FC = () => {
       title: 'Actions',
       key: 'actions',
       width: 280,
-      render: (_: any, record: Issue) => (
-        <Space wrap size="small">
-          <Button
-            size="small"
-            type={record.viewed ? 'default' : 'primary'}
-            icon={<EyeOutlined />}
-            onClick={() => handleMarkViewed(record.id, record.viewed)}
-          >
-            {record.viewed ? t('issues.viewed') : t('issues.markViewed')}
-          </Button>
+      render: (_: any, record: Issue) => {
+        const isProcessed = record.viewed || record.is_ignored || record.status === 'resolved';
+        return (
+          <Space wrap size="small">
+            {/* Always show Details */}
+            <Button
+              size="small"
+              onClick={() => {
+                setSelectedIssue(record);
+                setDetailsVisible(true);
+              }}
+            >
+              {t('issues.details')}
+            </Button>
 
-          <Button
-            size="small"
-            onClick={() => {
-              setSelectedIssue(record);
-              setDetailsVisible(true);
-            }}
-          >
-            {t('issues.details')}
-          </Button>
-
-          {!record.is_ignored && (
-            <>
-              <Button
-                size="small"
-                icon={<StopOutlined />}
-                onClick={() => {
-                  setSelectedIssue(record);
-                  setIgnoreModal(true);
-                }}
-              >
-                {t('issues.ignore')}
-              </Button>
-
-              {record.status !== 'resolved' && (
+            {/* Only show action buttons when NOT processed yet */}
+            {!isProcessed && (
+              <>
                 <Button
                   size="small"
-                  type="primary"
-                  icon={<CheckOutlined />}
-                  onClick={() => {
-                    setSelectedIssue(record);
-                    setResolveModal(true);
-                  }}
+                  type={record.viewed ? 'default' : 'primary'}
+                  icon={<EyeOutlined />}
+                  onClick={() => handleMarkViewed(record.id, record.viewed)}
                 >
-                  {t('issues.resolve')}
+                  {record.viewed ? t('issues.viewed') : t('issues.markViewed')}
                 </Button>
-              )}
-            </>
-          )}
-        </Space>
-      ),
+
+                {!record.is_ignored && (
+                  <>
+                    <Button
+                      size="small"
+                      icon={<StopOutlined />}
+                      onClick={() => {
+                        setSelectedIssue(record);
+                        setIgnoreModal(true);
+                      }}
+                    >
+                      {t('issues.ignore')}
+                    </Button>
+
+                    {record.status !== 'resolved' && (
+                      <Button
+                        size="small"
+                        type="primary"
+                        icon={<CheckOutlined />}
+                        onClick={() => {
+                          setSelectedIssue(record);
+                          setResolveModal(true);
+                        }}
+                      >
+                        {t('issues.resolve')}
+                      </Button>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -240,8 +276,41 @@ const Issues: React.FC = () => {
           dataSource={items}
           rowKey="id"
           loading={loading}
+          rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
           pagination={false}
         />
+        {/* Bulk Actions */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+          <div>
+            <Space>
+              <Button disabled={selectedRowKeys.length === 0} loading={bulkActionLoading || bulkLoading}
+                onClick={() => {
+                  setBulkActionLoading(true);
+                  dispatch(bulkAction({ ids: selectedRowKeys as number[], action: 'mark_viewed' }));
+                  setBulkActionLoading(false);
+                }}>Đánh dấu đã xem</Button>
+              <Button disabled={selectedRowKeys.length === 0} loading={bulkActionLoading || bulkLoading}
+                onClick={() => {
+                  setBulkActionLoading(true);
+                  dispatch(bulkAction({ ids: selectedRowKeys as number[], action: 'ignore' }));
+                  setBulkActionLoading(false);
+                }}>Ignore</Button>
+              <Button type="primary" disabled={selectedRowKeys.length === 0} loading={bulkActionLoading || bulkLoading}
+                onClick={() => {
+                  setBulkActionLoading(true);
+                  dispatch(bulkAction({ ids: selectedRowKeys as number[], action: 'resolve' }));
+                  setBulkActionLoading(false);
+                }}>Resolve</Button>
+              <Button danger disabled={selectedRowKeys.length === 0} loading={bulkActionLoading || bulkLoading}
+                onClick={() => {
+                  setBulkActionLoading(true);
+                  dispatch(bulkAction({ ids: selectedRowKeys as number[], action: 'delete' }));
+                  setBulkActionLoading(false);
+                }}>Xóa</Button>
+            </Space>
+          </div>
+          <div />
+        </div>
 
         <Pagination
           current={currentPage}
@@ -380,6 +449,7 @@ const Issues: React.FC = () => {
                           key: 'file',
                           render: (file: string) => {
                             // Extract filename from full path
+                            if (!file) return '-';
                             const filename = file.split(/[/\\]/).pop() || file;
                             return (
                               <div>
@@ -423,23 +493,122 @@ const Issues: React.FC = () => {
               );
             })()}
 
-            {/* Metadata (raw_data) */}
-            {selectedIssue.raw_data && Object.keys(selectedIssue.raw_data).length > 0 && (
-              <Collapse defaultActiveKey={[]}>
-                <Panel header="📊 Metadata" key="metadata">
-                  <pre style={{
-                    background: '#f5f5f5',
-                    padding: '12px',
-                    borderRadius: '4px',
-                    overflow: 'auto',
-                    fontSize: '12px',
-                    maxHeight: '400px'
-                  }}>
-                    {JSON.stringify(selectedIssue.raw_data, null, 2)}
-                  </pre>
-                </Panel>
-              </Collapse>
-            )}
+            {/* Metadata */}
+            {(() => {
+              const hasMetadata = selectedIssue.metadata && Object.keys(selectedIssue.metadata).length > 0;
+              const hasRawData = selectedIssue.raw_data && Object.keys(selectedIssue.raw_data).length > 0;
+
+              if (!hasMetadata && !hasRawData) return null;
+
+              return (
+                <Collapse defaultActiveKey={['metadata']}>
+                  <Panel header="📊 Metadata" key="metadata">
+                    <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                      {/* Upload Metadata */}
+                      {hasMetadata && selectedIssue.metadata && (
+                        <div>
+                          <Title level={5} style={{ marginBottom: 12 }}>🔍 Upload Information</Title>
+                          <div style={{
+                            background: '#f9f9f9',
+                            padding: '16px',
+                            borderRadius: '8px',
+                            border: '1px solid #e8e8e8'
+                          }}>
+                            {selectedIssue.metadata?.uploader_id && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>👤 Uploader:</Text>{' '}
+                                <Text>
+                                  {selectedIssue.metadata?.uploader_display_name} ({selectedIssue.metadata?.uploader_login})
+                                </Text>
+                              </div>
+                            )}
+                            {selectedIssue.metadata?.uploader_email && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>📧 Email:</Text>{' '}
+                                <Text copyable>{selectedIssue.metadata?.uploader_email}</Text>
+                              </div>
+                            )}
+                            {selectedIssue.metadata?.ip_address && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>🌐 IP Address:</Text>{' '}
+                                <Text code>{selectedIssue.metadata?.ip_address}</Text>
+                              </div>
+                            )}
+                            {selectedIssue.metadata?.user_agent && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>💻 User Agent:</Text>{' '}
+                                <Text style={{ fontSize: '11px', color: '#666' }}>
+                                  {selectedIssue.metadata?.user_agent}
+                                </Text>
+                              </div>
+                            )}
+                            {selectedIssue.metadata?.upload_method && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>📤 Upload Method:</Text>{' '}
+                                <Tag color={
+                                  selectedIssue.metadata?.upload_method === 'web' ? 'blue' :
+                                  selectedIssue.metadata?.upload_method === 'cli' ? 'purple' : 'green'
+                                }>
+                                  {selectedIssue.metadata?.upload_method.toUpperCase()}
+                                </Tag>
+                              </div>
+                            )}
+                            {selectedIssue.metadata?.upload_time && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>⏰ Upload Time:</Text>{' '}
+                                <Text>{new Date(selectedIssue.metadata?.upload_time).toLocaleString('vi-VN')}</Text>
+                              </div>
+                            )}
+                            {selectedIssue.metadata?.referer && (
+                              <div>
+                                <Text strong>🔗 Referer:</Text>{' '}
+                                <Text code style={{ fontSize: '11px' }}>{selectedIssue.metadata?.referer}</Text>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Raw Metadata JSON */}
+                      {hasMetadata && (
+                        <div>
+                          <Title level={5} style={{ marginBottom: 12 }}>📝 Raw Metadata (JSON)</Title>
+                          <pre style={{
+                            background: '#f5f5f5',
+                            padding: '12px',
+                            borderRadius: '4px',
+                            overflow: 'auto',
+                            fontSize: '12px',
+                            maxHeight: '300px',
+                            border: '1px solid #e8e8e8'
+                          }}>
+                            {JSON.stringify(selectedIssue.metadata, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+
+                      {/* Raw Data (if different from metadata) */}
+                      {hasRawData && (
+                        <div>
+                          <Title level={5} style={{ marginBottom: 12 }}>🗃️ Additional Data</Title>
+                          <pre style={{
+                            background: '#f5f5f5',
+                            padding: '12px',
+                            borderRadius: '4px',
+                            overflow: 'auto',
+                            fontSize: '12px',
+                            maxHeight: '300px',
+                            border: '1px solid #e8e8e8'
+                          }}>
+                            {JSON.stringify(selectedIssue.raw_data, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                    </Space>
+                  </Panel>
+                </Collapse>
+              );
+            })()}
           </Space>
         )}
       </Drawer>

@@ -84,3 +84,19 @@ body {
   opacity: 0.7;
 }
 
+/* Adjust Ant Design Drawer to avoid being overlapped by WordPress Admin Bar */
+body.admin-bar {
+  --wp-admin-bar-height: 32px;
+}
+
+@media screen and (max-width: 782px) {
+  body.admin-bar {
+    --wp-admin-bar-height: 46px;
+  }
+}
+
+body.admin-bar .ant-drawer-content-wrapper {
+  top: var(--wp-admin-bar-height) !important;
+  height: calc(100% - var(--wp-admin-bar-height)) !important;
+}
+

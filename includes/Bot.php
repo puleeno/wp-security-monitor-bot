@@ -22,6 +22,9 @@ use Puleeno\SecurityBot\WebMonitor\Issuers\SQLInjectionAttemptIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\BackdoorDetectionIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\RealtimeRedirectIssuer;
 use Puleeno\SecurityBot\WebMonitor\Issuers\FunctionOverrideIssuer;
+use Puleeno\SecurityBot\WebMonitor\Issuers\FatalErrorIssuer;
+use Puleeno\SecurityBot\WebMonitor\Issuers\PluginThemeUploadIssuer;
+use Puleeno\SecurityBot\WebMonitor\Issuers\PerformanceIssuer;
 use Puleeno\SecurityBot\WebMonitor\IssueManager;
 use Puleeno\SecurityBot\WebMonitor\Database\Schema;
 use Exception;
@@ -66,6 +69,10 @@ class Bot extends MonitorAbstract
 
         // Initialize security systems
         AccessControl::init();
+
+        // NOTE: Không auto-start bot nữa
+        // User phải manually start qua UI hoặc API để đảm bảo control rõ ràng
+        // $this->maybeAutoStart();
     }
 
     public static function getInstance()
@@ -78,10 +85,15 @@ class Bot extends MonitorAbstract
 
     public function start(): void
     {
-        if ($this->isRunning) {
+        // Check DB flag - single source of truth
+        if ($this->isRunning()) {
             return;
         }
 
+        // Set DB flag FIRST
+        update_option('wp_security_monitor_bot_running', true);
+
+        // Sync property với DB
         $this->isRunning = true;
 
         // Schedule cron job để chạy kiểm tra định kỳ
@@ -90,17 +102,24 @@ class Bot extends MonitorAbstract
             wp_schedule_event(time(), $interval, $this->cronHook);
         }
 
-        update_option('wp_security_monitor_bot_running', true);
-
         do_action('wp_security_monitor_bot_started');
+
+        if (WP_DEBUG) {
+            error_log('[WP Security Monitor] Bot started on ' . current_time('mysql'));
+        }
     }
 
     public function stop(): void
     {
-        if (!$this->isRunning) {
+        // Check DB flag - single source of truth
+        if (!$this->isRunning()) {
             return;
         }
 
+        // Set DB flag FIRST
+        update_option('wp_security_monitor_bot_running', false);
+
+        // Sync property với DB
         $this->isRunning = false;
 
         // Unschedule cron job
@@ -109,15 +128,23 @@ class Bot extends MonitorAbstract
             wp_unschedule_event($timestamp, $this->cronHook);
         }
 
-        update_option('wp_security_monitor_bot_running', false);
-
         do_action('wp_security_monitor_bot_stopped');
+
+        if (WP_DEBUG) {
+            error_log('[WP Security Monitor] Bot stopped on ' . current_time('mysql'));
+        }
     }
 
     public function isRunning(): bool
     {
+        // DB option là single source of truth
+        // Property chỉ dùng để cache trong memory
         $saved = get_option('wp_security_monitor_bot_running', false);
-        return $this->isRunning || $saved;
+
+        // Sync property với DB để tránh inconsistency
+        $this->isRunning = (bool) $saved;
+
+        return (bool) $saved;
     }
 
     /**
@@ -163,6 +190,15 @@ class Bot extends MonitorAbstract
 
         // Hook cho realtime brute force detection
         add_action('wp_security_monitor_realtime_brute_force', [$this, 'handleRealtimeBruteForce']);
+
+        // Hook cho fatal error detection
+        add_action('wp_security_monitor_fatal_error', [$this, 'handleFatalError']);
+
+        // Hook cho malicious upload detection
+        add_action('wp_security_monitor_malicious_upload', [$this, 'handleMaliciousUpload']);
+
+        // Hook cho slow performance detection
+        add_action('wp_security_monitor_slow_performance', [$this, 'handleSlowPerformance']);
     }
 
     /**
@@ -184,6 +220,30 @@ class Bot extends MonitorAbstract
         ];
 
         $this->config = array_merge($defaultConfig, $this->config);
+    }
+
+    /**
+     * Tự động start bot nếu cấu hình auto_start = true
+     *
+     * @return void
+     */
+    private function maybeAutoStart(): void
+    {
+        // Chỉ auto start khi:
+        // 1. Cấu hình auto_start = true
+        // 2. Bot chưa đang chạy
+        // 3. Không phải cron job (cho phép AJAX để UI có thể trigger)
+        if (
+            $this->getConfig('auto_start', true) &&
+            !$this->isRunning() &&
+            !wp_doing_cron()
+        ) {
+            $this->start();
+
+            if (WP_DEBUG) {
+                error_log('[WP Security Monitor] Bot auto-started on ' . current_time('mysql'));
+            }
+        }
     }
 
     /**
@@ -294,8 +354,8 @@ class Bot extends MonitorAbstract
 
         if (WP_DEBUG) {
             error_log("[Bot Debug] Telegram setup - Token: " . (!empty($telegramToken) ? 'SET' : 'MISSING') .
-                     ", Chat ID: " . (!empty($telegramChatId) ? 'SET' : 'MISSING') .
-                     ", Enabled: " . ($telegramEnabled ? 'YES' : 'NO'));
+                ", Chat ID: " . (!empty($telegramChatId) ? 'SET' : 'MISSING') .
+                ", Enabled: " . ($telegramEnabled ? 'YES' : 'NO'));
         }
 
         if ($telegramToken && $telegramChatId && $telegramEnabled) {
@@ -359,6 +419,14 @@ class Bot extends MonitorAbstract
         // Setup Default Issuers
         $issuersConfig = get_option('wp_security_monitor_issuers_config', []);
 
+        // Chỉ khởi tạo issuers khi Bot đang chạy để tránh tạo object nặng không cần thiết
+        if (!$this->isRunning()) {
+            if (WP_DEBUG) {
+                error_log('[Bot Debug] Skipping issuers initialization because bot is stopped');
+            }
+            return;
+        }
+
         // External Redirect Issuer
         $redirectIssuer = new ExternalRedirectIssuer();
         $redirectConfig = $issuersConfig['external_redirect'] ?? ['enabled' => true];
@@ -419,6 +487,19 @@ class Bot extends MonitorAbstract
             $this->addIssuer($evalIssuer);
         }
 
+        // Setup Git File Changes Issuer (chỉ nếu shell functions available)
+        if (GitFileChangesIssuer::areShellFunctionsEnabled()) {
+            $gitIssuer = new GitFileChangesIssuer();
+            $gitConfig = $issuersConfig['git_file_changes'] ?? [
+                'enabled' => true,
+                'check_interval' => 300,
+                'max_files_per_alert' => 10
+            ];
+            $gitIssuer->configure($gitConfig);
+            if ($gitIssuer->isEnabled()) {
+                $this->addIssuer($gitIssuer);
+            }
+        }
 
         // Setup SQL Injection Attempt Issuer - HIGHEST PRIORITY
         $sqliIssuer = new SQLInjectionAttemptIssuer();
@@ -456,6 +537,43 @@ class Bot extends MonitorAbstract
         $overrideIssuer->configure($overrideConfig);
         if ($overrideIssuer->isEnabled()) {
             $this->addIssuer($overrideIssuer);
+        }
+
+        // Setup Fatal Error Issuer - REALTIME
+        $fatalErrorIssuer = new FatalErrorIssuer();
+        $fatalErrorConfig = $issuersConfig['fatal_error'] ?? [
+            'enabled' => true,
+            'monitor_levels' => ['error', 'warning'], // ['error', 'warning', 'notice']
+        ];
+        $fatalErrorIssuer->configure($fatalErrorConfig);
+        if ($fatalErrorIssuer->isEnabled()) {
+            $this->addIssuer($fatalErrorIssuer);
+        }
+
+        // Setup Plugin/Theme Upload Scanner - REALTIME
+        $uploadScannerIssuer = new PluginThemeUploadIssuer();
+        $uploadScannerConfig = $issuersConfig['plugin_theme_upload'] ?? [
+            'enabled' => true,
+            'max_files_per_scan' => 100,
+            'max_file_size' => 1048576, // 1MB
+            'block_suspicious_uploads' => true,
+        ];
+        $uploadScannerIssuer->configure($uploadScannerConfig);
+        if ($uploadScannerIssuer->isEnabled()) {
+            $this->addIssuer($uploadScannerIssuer);
+        }
+
+        // Setup Performance Monitor - REALTIME
+        $performanceIssuer = new PerformanceIssuer();
+        $performanceConfig = $issuersConfig['performance_monitor'] ?? [
+            'enabled' => true,
+            'threshold' => 30, // seconds
+            'memory_threshold' => 134217728, // 128MB
+            'track_queries' => true,
+        ];
+        $performanceIssuer->configure($performanceConfig);
+        if ($performanceIssuer->isEnabled()) {
+            $this->addIssuer($performanceIssuer);
         }
 
         if (WP_DEBUG) {
@@ -501,7 +619,7 @@ class Bot extends MonitorAbstract
         }
     }
 
-        /**
+    /**
      * Khi plugin được activate
      *
      * @return void
@@ -517,6 +635,10 @@ class Bot extends MonitorAbstract
             'check_interval' => 'hourly'
         ]);
 
+        // Set flag OFF mặc định khi activate - user phải manually start
+        // Điều này đảm bảo bot không tự động chạy khi vừa cài đặt
+        add_option('wp_security_monitor_bot_running', false);
+
         // Tạo cron job cho security checks
         $cronHook = 'wp_security_monitor_bot_check';
         if (!wp_next_scheduled($cronHook)) {
@@ -531,7 +653,7 @@ class Bot extends MonitorAbstract
         }
 
         // Thêm custom cron interval cho 5 phút
-        add_filter('cron_schedules', function($schedules) {
+        add_filter('cron_schedules', function ($schedules) {
             $schedules['every_5_minutes'] = [
                 'interval' => 300, // 5 phút = 300 giây
                 'display' => 'Every 5 Minutes'
@@ -567,7 +689,7 @@ class Bot extends MonitorAbstract
      *
      * @return void
      */
-            public function addAdminMenu(): void
+    public function addAdminMenu(): void
     {
         // Delegate to AdminMenuManager
         $this->menuManager->addMenus();
@@ -602,7 +724,7 @@ class Bot extends MonitorAbstract
             // Show admin notice sau khi migrate
             $newVersion = get_option('wp_security_monitor_db_version');
             if ($newVersion !== $currentVersion) {
-                add_action('admin_notices', function() use ($currentVersion, $newVersion) {
+                add_action('admin_notices', function () use ($currentVersion, $newVersion) {
                     echo '<div class="notice notice-success is-dismissible">';
                     echo '<p><strong>WP Security Monitor:</strong> Database đã được cập nhật từ version ' . esc_html($currentVersion) . ' lên ' . esc_html($newVersion) . '!</p>';
                     echo '</div>';
@@ -622,6 +744,14 @@ class Bot extends MonitorAbstract
      */
     public function runCheck(): array
     {
+        // CHECK FLAG FIRST - Nếu bot đã bị dừng, không chạy check
+        if (!$this->isRunning()) {
+            if (WP_DEBUG) {
+                error_log('[WP Security Monitor] runCheck() skipped - Bot is stopped');
+            }
+            return [];
+        }
+
         // Đảm bảo channels được khởi tạo trước khi chạy check
         $this->ensureChannelsInitialized();
 
@@ -642,17 +772,20 @@ class Bot extends MonitorAbstract
                     foreach ($detectedIssues as $issueData) {
                         $issueId = $issueManager->recordIssue($issuer->getName(), $issueData, $issuer);
 
-                                                // Chỉ gửi notification cho issues mới (không bị ignore)
-                        if ($issueId !== false) {
-                            // Kiểm tra xem issue có phải là mới không
-                            $issueHash = $this->generateIssueHash($issuer->getName(), $issueData);
-                            $existingId = $this->getExistingIssueId($issueHash);
+                        // recordIssue có thể trả về:
+                        //  - false: bị ignore hoặc lỗi → bỏ qua
+                        //  - số dương: ID issue (mới hoặc cập nhật)
+                        //  - số âm:  -ID issue (cần notify lại trên redetection)
+                        if ($issueId === false) {
+                            continue;
+                        }
 
-                            // Chỉ gửi notification nếu issue chưa tồn tại
-                            if (!$existingId) {
-                                // Thay vì gửi ngay, thêm vào notification queue
-                                $this->queueNotificationsForIssue($issuer->getName(), $issueId, $issueData);
-                            }
+                        $actualIssueId = abs($issueId);
+                        $shouldNotify = ($issueId < 0) || $this->isNewIssue($actualIssueId);
+
+                        if ($shouldNotify) {
+                            // Thêm vào notification queue (đã có cơ chế dedup ở NotificationManager)
+                            $this->queueNotificationsForIssue($issuer->getName(), $actualIssueId, $issueData);
                         }
                     }
                 }
@@ -690,7 +823,7 @@ class Bot extends MonitorAbstract
         ];
 
         // Loại bỏ các giá trị null/empty để tạo hash nhất quán
-        $hashData = array_filter($hashData, function($value) {
+        $hashData = array_filter($hashData, function ($value) {
             return !empty($value);
         });
 
@@ -770,11 +903,9 @@ class Bot extends MonitorAbstract
      */
     private function formatNotificationMessage(string $issuerName, array $issueData): string
     {
-        // Debug logging
-        if (WP_DEBUG) {
-            error_log("[Bot] formatNotificationMessage() - issuerName: " . $issuerName);
-            error_log("[Bot] formatNotificationMessage() - issueData: " . json_encode($issueData));
-        }
+        // Debug logging - ALWAYS LOG for debugging
+        error_log("[Bot] formatNotificationMessage() - issuerName: " . $issuerName);
+        error_log("[Bot] formatNotificationMessage() - issueData: " . json_encode($issueData));
 
         $title = $issueData['title'] ?? 'Security Issue Detected';
         $description = $issueData['description'] ?? 'A security issue has been detected';
@@ -811,7 +942,44 @@ class Bot extends MonitorAbstract
         $typeIcon = $typeEmoji[$type] ?? '🔔';
 
         // Format message dựa vào type
-        if ($type === 'failed_login_attempts') {
+        if ($type === 'redirect' || $issuerName === 'RealtimeRedirectIssuer') {
+            // Redirect details
+            $toUrl = $issueData['to_url'] ?? 'unknown';
+            $fromUrl = $issueData['from_url'] ?? 'unknown';
+            $method = $issueData['method'] ?? 'unknown';
+            $statusCode = $issueData['status'] ?? 'unknown';
+            $userId = $issueData['user_id'] ?? 0;
+            $referer = $issueData['referer'] ?? '';
+
+            $message = "🔀 *CẢNH BÁO REDIRECT*\n\n";
+            $message .= "*Phát hiện redirect đáng ngờ*\n\n";
+            $message .= "🎯 *Đích đến:*\n`{$toUrl}`\n\n";
+            $message .= "📍 *Từ URL:* `{$fromUrl}`\n";
+            $message .= "⚙️ *Phương thức:* `{$method}`\n";
+            if ($statusCode && $statusCode !== 'unknown') {
+                $message .= "📊 *HTTP Status:* `{$statusCode}`\n";
+            }
+
+            if ($userId > 0) {
+                $user = get_userdata($userId);
+                if ($user) {
+                    $message .= "\n👤 *User:* {$user->display_name} (@{$user->user_login})\n";
+                    $message .= "🔑 *Roles:* " . implode(', ', $user->roles) . "\n";
+                }
+            } else {
+                $message .= "\n👤 *User:* Guest (chưa đăng nhập)\n";
+            }
+
+            if (!empty($ipAddress)) {
+                $message .= "🌐 *IP Address:* `{$ipAddress}`\n";
+            }
+
+            if (!empty($referer) && $referer !== 'unknown') {
+                $message .= "🔗 *Referer:* `{$referer}`\n";
+            }
+
+            $message .= "\n⚠️ *Mức độ:* {$severityIcon} *" . strtoupper($severity) . "*";
+        } else if ($type === 'failed_login_attempts') {
             $message = "🚨 *CẢNH BÁO BẢO MẬT*\n\n";
             $message .= "🔐 *Phát hiện nhiều lần đăng nhập thất bại*\n\n";
             $message .= "👤 Username: *{$username}*\n";
@@ -848,6 +1016,22 @@ class Bot extends MonitorAbstract
             }
             $message .= "⚠️ Mức độ: {$severityIcon} *" . strtoupper($severity) . "*\n\n";
             $message .= "📝 Chi tiết:\n_{$description}_\n";
+        } elseif ($issuerName === 'File Change Monitor' || $type === 'file_change') {
+            // File change details
+            $message = "📁 *FILE CHANGE DETECTED*\n\n";
+            $message .= "*" . ($title ?: 'File changed') . "*\n\n";
+            // Extract file path from description if provided like '... File: path (Size: ..., Modified: ...)'
+            $fileLine = '';
+            if (!empty($description)) {
+                $fileLine = $description;
+            }
+            if (!empty($filePath)) {
+                $message .= "🗂 File: `{$filePath}`\n";
+            }
+            if (!empty($fileLine)) {
+                $message .= "📝 Chi tiết: \n" . $fileLine . "\n";
+            }
+            $message .= "⚠️ Mức độ: {$severityIcon} *" . strtoupper($severity) . "*";
         } else {
             // Default format
             $message = "{$typeIcon} *CẢNH BÁO BẢO MẬT*\n\n";
@@ -919,14 +1103,14 @@ class Bot extends MonitorAbstract
             switch ($action) {
                 case 'start':
                     $this->start();
-                    add_action('admin_notices', function() {
+                    add_action('admin_notices', function () {
                         echo '<div class="notice notice-success"><p>Security Monitor Bot đã được khởi động!</p></div>';
                     });
                     break;
 
                 case 'stop':
                     $this->stop();
-                    add_action('admin_notices', function() {
+                    add_action('admin_notices', function () {
                         echo '<div class="notice notice-info"><p>Security Monitor Bot đã được dừng!</p></div>';
                     });
                     break;
@@ -934,7 +1118,7 @@ class Bot extends MonitorAbstract
                 case 'run_check':
                     $issues = $this->runCheck();
                     $count = count($issues);
-                    add_action('admin_notices', function() use ($count) {
+                    add_action('admin_notices', function () use ($count) {
                         $class = $count > 0 ? 'notice-warning' : 'notice-success';
                         $message = $count > 0 ? "Phát hiện {$count} vấn đề bảo mật!" : "Không phát hiện vấn đề nào.";
                         echo "<div class=\"notice {$class}\"><p>{$message}</p></div>";
@@ -949,7 +1133,7 @@ class Bot extends MonitorAbstract
             Schema::updateSchema();
             $newVersion = get_option('wp_security_monitor_db_version');
 
-            add_action('admin_notices', function() use ($oldVersion, $newVersion) {
+            add_action('admin_notices', function () use ($oldVersion, $newVersion) {
                 echo '<div class="notice notice-success is-dismissible">';
                 echo '<p><strong>✅ Migration hoàn tất!</strong> Database đã được cập nhật từ version <code>' . esc_html($oldVersion) . '</code> lên <code>' . esc_html($newVersion) . '</code></p>';
                 echo '</div>';
@@ -965,13 +1149,16 @@ class Bot extends MonitorAbstract
 
 
 
-        /**
+    /**
      * Lấy thống kê
      *
      * @return array
      */
     public function getStats(): array
     {
+        // Đảm bảo khởi tạo channels/issuers theo trạng thái hiện tại
+        $this->ensureChannelsInitialized();
+
         $issueManager = IssueManager::getInstance();
         $issueStats = $issueManager->getStats();
 
@@ -1086,7 +1273,7 @@ class Bot extends MonitorAbstract
             case 'email':
                 return $this->testEmailConnection();
 
-                        case 'slack':
+            case 'slack':
                 return $this->testSlackConnection();
 
             case 'log':
@@ -1312,12 +1499,12 @@ class Bot extends MonitorAbstract
         $currentTime = current_time('d/m/Y H:i:s');
 
         $testMessage = "🧪 *Test Tin Nhắn Telegram*\n\n" .
-                      "Đây là tin nhắn test từ Security Bot.\n\n" .
-                      "📱 *Thông tin Site:*\n" .
-                      "• Tên: {$siteName}\n" .
-                      "• URL: {$siteUrl}\n" .
-                      "• Thời gian: {$currentTime}\n\n" .
-                      "Nếu bạn nhận được tin nhắn này, có nghĩa là bot đã hoạt động bình thường!";
+            "Đây là tin nhắn test từ Security Bot.\n\n" .
+            "📱 *Thông tin Site:*\n" .
+            "• Tên: {$siteName}\n" .
+            "• URL: {$siteUrl}\n" .
+            "• Thời gian: {$currentTime}\n\n" .
+            "Nếu bạn nhận được tin nhắn này, có nghĩa là bot đã hoạt động bình thường!";
 
         try {
             $result = $telegram->send($testMessage);
@@ -1365,12 +1552,12 @@ class Bot extends MonitorAbstract
         $currentTime = current_time('d/m/Y H:i:s');
 
         $testMessage = "🧪 Test Email\n\n" .
-                      "Đây là email test từ Security Bot.\n\n" .
-                      "📧 Thông tin Site:\n" .
-                      "• Tên: {$siteName}\n" .
-                      "• URL: {$siteUrl}\n" .
-                      "• Thời gian: {$currentTime}\n\n" .
-                      "Nếu bạn nhận được email này, có nghĩa là bot đã hoạt động bình thường!";
+            "Đây là email test từ Security Bot.\n\n" .
+            "📧 Thông tin Site:\n" .
+            "• Tên: {$siteName}\n" .
+            "• URL: {$siteUrl}\n" .
+            "• Thời gian: {$currentTime}\n\n" .
+            "Nếu bạn nhận được email này, có nghĩa là bot đã hoạt động bình thường!";
 
         try {
             $result = $email->send($testMessage);
@@ -1432,12 +1619,12 @@ class Bot extends MonitorAbstract
         $currentTime = current_time('d/m/Y H:i:s');
 
         $testMessage = "🧪 *Test Tin Nhắn Slack*\n\n" .
-                      "Đây là tin nhắn test từ Security Bot.\n\n" .
-                      "💬 *Thông tin Site:*\n" .
-                      "• Tên: {$siteName}\n" .
-                      "• URL: {$siteUrl}\n" .
-                      "• Thời gian: {$currentTime}\n\n" .
-                      "Nếu bạn nhận được tin nhắn này, có nghĩa là bot đã hoạt động bình thường!";
+            "Đây là tin nhắn test từ Security Bot.\n\n" .
+            "💬 *Thông tin Site:*\n" .
+            "• Tên: {$siteName}\n" .
+            "• URL: {$siteUrl}\n" .
+            "• Thời gian: {$currentTime}\n\n" .
+            "Nếu bạn nhận được tin nhắn này, có nghĩa là bot đã hoạt động bình thường!";
 
         try {
             $result = $slack->send($testMessage);
@@ -1484,12 +1671,12 @@ class Bot extends MonitorAbstract
         $currentTime = current_time('d/m/Y H:i:s');
 
         $testMessage = "🧪 Test Log\n\n" .
-                      "Đây là log test từ Security Bot.\n\n" .
-                      "📝 Thông tin Site:\n" .
-                      "• Tên: {$siteName}\n" .
-                      "• URL: {$siteUrl}\n" .
-                      "• Thời gian: {$currentTime}\n\n" .
-                      "Nếu bạn thấy log này, có nghĩa là bot đã hoạt động bình thường!";
+            "Đây là log test từ Security Bot.\n\n" .
+            "📝 Thông tin Site:\n" .
+            "• Tên: {$siteName}\n" .
+            "• URL: {$siteUrl}\n" .
+            "• Thời gian: {$currentTime}\n\n" .
+            "Nếu bạn thấy log này, có nghĩa là bot đã hoạt động bình thường!";
 
         try {
             $result = $log->send($testMessage);
@@ -1524,7 +1711,7 @@ class Bot extends MonitorAbstract
         $processor->processNotificationsCron();
     }
 
-        /**
+    /**
      * Xử lý suspicious redirect detection realtime
      *
      * @param array $issue
@@ -1532,6 +1719,11 @@ class Bot extends MonitorAbstract
      */
     public function handleSuspiciousRedirect(array $issue): void
     {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
         try {
             // Thêm backtrace vào issue data nếu có
             $issueData = $issue['details'];
@@ -1557,7 +1749,8 @@ class Bot extends MonitorAbstract
 
                 foreach ($this->channels as $channelName => $channel) {
                     if ($channel->isAvailable()) {
-                        $message = $this->formatNotificationMessage('RealtimeRedirectIssuer', $issue);
+                        // Pass issueData (details) thay vì issue để có đầy đủ thông tin
+                        $message = $this->formatNotificationMessage('RealtimeRedirectIssuer', $issueData);
                         $context = [
                             'issuer' => 'RealtimeRedirectIssuer',
                             'issue_data' => $issueData,
@@ -1721,6 +1914,11 @@ class Bot extends MonitorAbstract
      */
     public function handleUserRegistration(array $userData): void
     {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
         try {
             if (WP_DEBUG) {
                 error_log("[Bot] Handling user registration: " . json_encode($userData));
@@ -1820,6 +2018,11 @@ class Bot extends MonitorAbstract
      */
     public function handleRealtimeFailedLogin(array $issueData): void
     {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
         try {
             if (WP_DEBUG) {
                 error_log("[Bot] Handling realtime failed login: " . json_encode($issueData));
@@ -1904,6 +2107,11 @@ class Bot extends MonitorAbstract
      */
     public function handleRealtimeBruteForce(array $issueData): void
     {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
         try {
             if (WP_DEBUG) {
                 error_log("[Bot] Handling realtime brute force: " . json_encode($issueData));
@@ -2040,5 +2248,479 @@ class Bot extends MonitorAbstract
         } else {
             wp_send_json_error(['message' => 'Không thể bỏ đánh dấu']);
         }
+    }
+
+    /**
+     * Xử lý fatal error detection
+     *
+     * @param array $errorData
+     * @return void
+     */
+    public function handleFatalError(array $errorData): void
+    {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
+        try {
+            if (WP_DEBUG) {
+                error_log("[Bot] Handling fatal error: " . json_encode($errorData));
+            }
+
+            // Log issue ngay lập tức
+            $issueId = $this->issueManager->recordIssue(
+                'fatal_error',
+                $errorData
+            );
+
+            // Chỉ gửi notification nếu đây là issue mới
+            if ($issueId && $this->isNewIssue($issueId)) {
+                // Tạo notification records cho tất cả channels active
+                $this->ensureChannelsInitialized();
+                $notificationManager = \Puleeno\SecurityBot\WebMonitor\NotificationManager::getInstance();
+
+                foreach ($this->channels as $channelName => $channel) {
+                    if ($channel->isAvailable()) {
+                        $message = $this->formatFatalErrorMessage($errorData);
+                        $context = [
+                            'issuer' => 'FatalErrorIssuer',
+                            'issue_data' => $errorData,
+                            'timestamp' => current_time('mysql'),
+                            'is_realtime' => true
+                        ];
+
+                        // Tạo notification record
+                        $notificationManager->queueNotification(
+                            $channelName,
+                            $issueId,
+                            $message,
+                            $context
+                        );
+
+                        // Gửi notification trực tiếp
+                        try {
+                            $result = $channel->send($message, $context);
+
+                            if ($result) {
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'sent'
+                                );
+                                error_log("WP Security Monitor: Fatal error notification sent via {$channelName}");
+                            } else {
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'failed',
+                                    'Failed to send notification'
+                                );
+                                error_log("WP Security Monitor: Failed to send fatal error notification via {$channelName}");
+                            }
+                        } catch (\Exception $e) {
+                            $notificationManager->updateNotificationStatus(
+                                $notificationManager->getLastInsertedNotificationId(),
+                                'failed',
+                                'Exception: ' . $e->getMessage()
+                            );
+                            error_log("WP Security Monitor: Error sending fatal error notification via {$channelName}: " . $e->getMessage());
+                        }
+                    }
+                }
+            } else if ($issueId) {
+                error_log("WP Security Monitor: Updated existing fatal error issue ID: {$issueId}");
+            }
+
+        } catch (\Exception $e) {
+            error_log('WP Security Monitor: Error handling fatal error - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Xử lý malicious upload detection
+     *
+     * @param array $uploadData
+     * @return void
+     */
+    public function handleMaliciousUpload(array $uploadData): void
+    {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
+        try {
+            if (WP_DEBUG) {
+                error_log("[Bot] Handling malicious upload: " . json_encode($uploadData));
+            }
+
+            // Log issue ngay lập tức
+            $issueId = $this->issueManager->recordIssue(
+                'malicious_upload',
+                $uploadData
+            );
+
+            // Chỉ gửi notification nếu đây là issue mới
+            if ($issueId && $this->isNewIssue($issueId)) {
+                // Tạo notification records cho tất cả channels active
+                $this->ensureChannelsInitialized();
+                $notificationManager = \Puleeno\SecurityBot\WebMonitor\NotificationManager::getInstance();
+
+                foreach ($this->channels as $channelName => $channel) {
+                    if ($channel->isAvailable()) {
+                        $message = $this->formatMaliciousUploadMessage($uploadData);
+                        $context = [
+                            'issuer' => 'PluginThemeUploadIssuer',
+                            'issue_data' => $uploadData,
+                            'timestamp' => current_time('mysql'),
+                            'is_realtime' => true
+                        ];
+
+                        // Tạo notification record
+                        $notificationManager->queueNotification(
+                            $channelName,
+                            $issueId,
+                            $message,
+                            $context
+                        );
+
+                        // Gửi notification trực tiếp
+                        try {
+                            $result = $channel->send($message, $context);
+
+                            if ($result) {
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'sent'
+                                );
+                                error_log("WP Security Monitor: Malicious upload notification sent via {$channelName}");
+                            } else {
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'failed',
+                                    'Failed to send notification'
+                                );
+                                error_log("WP Security Monitor: Failed to send malicious upload notification via {$channelName}");
+                            }
+                        } catch (\Exception $e) {
+                            $notificationManager->updateNotificationStatus(
+                                $notificationManager->getLastInsertedNotificationId(),
+                                'failed',
+                                'Exception: ' . $e->getMessage()
+                            );
+                            error_log("WP Security Monitor: Error sending malicious upload notification via {$channelName}: " . $e->getMessage());
+                        }
+                    }
+                }
+            } else if ($issueId) {
+                error_log("WP Security Monitor: Updated existing malicious upload issue ID: {$issueId}");
+            }
+
+        } catch (\Exception $e) {
+            error_log('WP Security Monitor: Error handling malicious upload - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Format fatal error message cho notification
+     *
+     * @param array $errorData
+     * @return string
+     */
+    private function formatFatalErrorMessage(array $errorData): string
+    {
+        $level = $errorData['level'] ?? 'error';
+        $severity = $errorData['severity'] ?? 'critical';
+        $title = $errorData['title'] ?? 'Fatal Error';
+        $description = $errorData['description'] ?? '';
+        $filePath = $errorData['file_path'] ?? '';
+        $lineNumber = $errorData['line_number'] ?? 0;
+
+        // Escape markdown special characters
+        $title = $this->escapeMarkdown($title);
+        $description = $this->escapeMarkdown($description);
+
+        // Truncate if too long (Telegram limit)
+        if (strlen($title) > 200) {
+            $title = substr($title, 0, 200) . '...';
+        }
+        if (strlen($description) > 500) {
+            $description = substr($description, 0, 500) . '...';
+        }
+
+        $icon = $level === 'error' ? '🚨' : ($level === 'warning' ? '⚠️' : '⚡');
+
+        $message = "{$icon} *CẢNH BÁO LỖI HỆ THỐNG*\n\n";
+        $message .= "*Error Type:* {$title}\n\n";
+        $message .= "📝 *Chi tiết:*\n{$description}\n\n";
+        $message .= "⚠️ Mức độ: *" . strtoupper($severity) . "*\n";
+        $message .= "🔢 Level: *{$level}*\n";
+
+        if (!empty($filePath)) {
+            $message .= "📁 File: `" . basename($filePath) . ":{$lineNumber}`\n";
+        }
+
+        if (!empty($errorData['url'])) {
+            $message .= "🌐 URL: {$errorData['url']}\n";
+        }
+
+        $message .= "\n⏰ " . current_time('d/m/Y H:i:s');
+        $message .= "\n🌐 " . home_url();
+
+        return $message;
+    }
+
+    /**
+     * Format malicious upload message cho notification
+     *
+     * @param array $uploadData
+     * @return string
+     */
+    private function formatMaliciousUploadMessage(array $uploadData): string
+    {
+        $title = $uploadData['title'] ?? 'Malicious Upload Detected';
+        $description = $uploadData['description'] ?? '';
+        $itemType = $uploadData['item_type'] ?? 'file';
+        $itemName = $uploadData['item_name'] ?? 'unknown';
+
+        $message = "🚨 *CẢNH BÁO BẢO MẬT NGHIÊM TRỌNG*\n\n";
+        $message .= "☠️ *Phát hiện mã độc trong upload*\n\n";
+        $message .= "*{$title}*\n\n";
+        $message .= "📝 _{$description}_\n\n";
+        $message .= "📦 Loại: *" . ucfirst($itemType) . "*\n";
+        $message .= "📛 Tên: *{$itemName}*\n";
+        $message .= "⚠️ Mức độ: 🔴 *CRITICAL*\n\n";
+
+        if (isset($uploadData['findings']) && !empty($uploadData['findings'])) {
+            $findingsCount = is_array($uploadData['findings']) ? count($uploadData['findings']) : 0;
+            $message .= "🔍 Phát hiện: *{$findingsCount}* pattern(s) độc hại\n\n";
+
+            if ($findingsCount > 0 && $findingsCount <= 5) {
+                $message .= "⚠️ *Chi tiết patterns:*\n";
+                $i = 1;
+                foreach ($uploadData['findings'] as $file => $patterns) {
+                    if ($i > 5)
+                        break;
+                    $patternCount = is_array($patterns) ? count($patterns) : 0;
+                    $fileName = basename($file);
+                    $message .= "{$i}. `{$fileName}` - {$patternCount} pattern(s)\n";
+                    $i++;
+                }
+            }
+        }
+
+        if (isset($uploadData['username']) && !empty($uploadData['username'])) {
+            $message .= "\n👤 Upload bởi: *{$uploadData['username']}*\n";
+        }
+
+        if (isset($uploadData['ip_address']) && !empty($uploadData['ip_address'])) {
+            $message .= "🌐 IP: *{$uploadData['ip_address']}*\n";
+        }
+
+        $message .= "\n⏰ " . current_time('d/m/Y H:i:s');
+        $message .= "\n🌐 " . home_url();
+        $message .= "\n\n⚠️ *HÀNH ĐỘNG NGAY:* Kiểm tra và xóa {$itemType} này!";
+
+        return $message;
+    }
+
+    /**
+     * Xử lý slow performance detection
+     *
+     * @param array $performanceData
+     * @return void
+     */
+    public function handleSlowPerformance(array $performanceData): void
+    {
+        // CHECK FLAG FIRST - Nếu bot đã dừng, không xử lý
+        if (!$this->isRunning()) {
+            return;
+        }
+
+        try {
+            if (WP_DEBUG) {
+                error_log("[Bot] Handling slow performance: " . json_encode($performanceData));
+            }
+
+            // Log issue ngay lập tức
+            $issueId = $this->issueManager->recordIssue(
+                'slow_performance',
+                $performanceData
+            );
+
+            // Chỉ gửi notification nếu đây là issue mới
+            if ($issueId && $this->isNewIssue($issueId)) {
+                // Tạo notification records cho tất cả channels active
+                $this->ensureChannelsInitialized();
+                $notificationManager = \Puleeno\SecurityBot\WebMonitor\NotificationManager::getInstance();
+
+                foreach ($this->channels as $channelName => $channel) {
+                    if ($channel->isAvailable()) {
+                        $message = $this->formatSlowPerformanceMessage($performanceData);
+                        $context = [
+                            'issuer' => 'PerformanceIssuer',
+                            'issue_data' => $performanceData,
+                            'timestamp' => current_time('mysql'),
+                            'is_realtime' => true
+                        ];
+
+                        // Tạo notification record
+                        $notificationManager->queueNotification(
+                            $channelName,
+                            $issueId,
+                            $message,
+                            $context
+                        );
+
+                        // Gửi notification trực tiếp
+                        try {
+                            $result = $channel->send($message, $context);
+
+                            if ($result) {
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'sent'
+                                );
+                                error_log("WP Security Monitor: Slow performance notification sent via {$channelName}");
+                            } else {
+                                $notificationManager->updateNotificationStatus(
+                                    $notificationManager->getLastInsertedNotificationId(),
+                                    'failed',
+                                    'Failed to send notification'
+                                );
+                                error_log("WP Security Monitor: Failed to send slow performance notification via {$channelName}");
+                            }
+                        } catch (\Exception $e) {
+                            $notificationManager->updateNotificationStatus(
+                                $notificationManager->getLastInsertedNotificationId(),
+                                'failed',
+                                'Exception: ' . $e->getMessage()
+                            );
+                            error_log("WP Security Monitor: Error sending slow performance notification via {$channelName}: " . $e->getMessage());
+                        }
+                    }
+                }
+            } else if ($issueId) {
+                error_log("WP Security Monitor: Updated existing slow performance issue ID: {$issueId}");
+            }
+
+        } catch (\Exception $e) {
+            error_log('WP Security Monitor: Error handling slow performance - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Format slow performance message cho notification
+     *
+     * @param array $performanceData
+     * @return string
+     */
+    private function formatSlowPerformanceMessage(array $performanceData): string
+    {
+        $executionTime = $performanceData['execution_time'] ?? 0;
+        $threshold = $performanceData['threshold'] ?? 30;
+        $severity = $performanceData['severity'] ?? 'medium';
+        $url = $performanceData['url'] ?? '';
+        $method = $performanceData['method'] ?? 'GET';
+
+        $icon = $severity === 'critical' ? '🔴' : ($severity === 'high' ? '🟠' : '🟡');
+
+        $message = "{$icon} *CẢNH BÁO HIỆU NĂNG*\n\n";
+        $message .= "🐌 *Request xử lý quá chậm*\n\n";
+        $message .= "⏱️ Thời gian: *{$executionTime}s* (ngưỡng: {$threshold}s)\n";
+        $message .= "⚠️ Mức độ: *" . strtoupper($severity) . "*\n\n";
+
+        // Request info
+        $message .= "🌐 *Request Details:*\n";
+        $message .= "• Method: *{$method}*\n";
+        $message .= "• URL: `{$url}`\n";
+
+        // Memory usage
+        if (isset($performanceData['memory_used'])) {
+            $message .= "• Memory: {$performanceData['memory_used']}";
+            if (isset($performanceData['peak_memory'])) {
+                $message .= " (peak: {$performanceData['peak_memory']})";
+            }
+            $message .= "\n";
+        }
+
+        // Queries info
+        if (isset($performanceData['total_queries']) && $performanceData['total_queries'] > 0) {
+            $message .= "• Queries: {$performanceData['total_queries']} queries\n";
+
+            if (isset($performanceData['slow_queries']) && !empty($performanceData['slow_queries'])) {
+                $slowCount = count($performanceData['slow_queries']);
+                $message .= "• Slow queries (>1s): *{$slowCount}*\n";
+            }
+        }
+
+        // Server load (gắn nhãn: CPU/Memory/Diskspace theo yêu cầu hiển thị)
+        if (isset($performanceData['server_load']) && !empty($performanceData['server_load'])) {
+            $load = $performanceData['server_load'];
+            $l1 = $load['1min'] ?? '-';
+            $l5 = $load['5min'] ?? '-';
+            $l15 = $load['15min'] ?? '-';
+            $message .= "• Server load: {$l1} (CPU) / {$l5} (Memory) / {$l15} (Diskspace)\n";
+        }
+
+        // Backtrace (top 5)
+        if (isset($performanceData['backtrace']) && !empty($performanceData['backtrace'])) {
+            $message .= "\n🔍 *Backtrace (Top 5):*\n";
+            $traces = array_slice($performanceData['backtrace'], 0, 5);
+            foreach ($traces as $trace) {
+                // Hỗ trợ cả dạng string và array {file,line,function,class}
+                if (is_array($trace)) {
+                    $file = $trace['file'] ?? '';
+                    $line = $trace['line'] ?? '';
+                    $func = $trace['function'] ?? '';
+                    $cls = $trace['class'] ?? '';
+
+                    $parts = [];
+                    if (!empty($file)) {
+                        $parts[] = $file . (!empty($line) ? ":{$line}" : '');
+                    }
+                    if (!empty($cls) || !empty($func)) {
+                        $parts[] = trim(($cls ? $cls . '::' : '') . ($func ?: '')) . '()';
+                    }
+                    $lineStr = implode(' — ', $parts);
+                    $message .= "```\n{$lineStr}\n```\n";
+                } else {
+                    $message .= "```\n{$trace}\n```\n";
+                }
+            }
+        }
+
+        // Slow queries detail (top 3)
+        if (isset($performanceData['slow_queries']) && !empty($performanceData['slow_queries'])) {
+            $message .= "\n⚡ *Slow Queries (Top 3):*\n";
+            $slowQueries = array_slice($performanceData['slow_queries'], 0, 3);
+            foreach ($slowQueries as $i => $query) {
+                $message .= ($i + 1) . ". [{$query['time']}s] `{$query['query']}`\n";
+            }
+        }
+
+        $message .= "\n⏰ " . current_time('d/m/Y H:i:s');
+        $message .= "\n🌐 " . home_url();
+        $message .= "\n\n💡 *Gợi ý:* Kiểm tra backtrace và queries để tối ưu performance";
+
+        return $message;
+    }
+
+    /**
+     * Escape special Markdown characters for Telegram
+     *
+     * @param string $text
+     * @return string
+     */
+    private function escapeMarkdown(string $text): string
+    {
+        // Characters that need to be escaped in Telegram MarkdownV2
+        // For simple Markdown mode, we need to escape: _ * [ ] ( ) ~ ` > # + - = | { } . !
+        $specialChars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!', '\\'];
+
+        foreach ($specialChars as $char) {
+            $text = str_replace($char, '\\' . $char, $text);
+        }
+
+        return $text;
     }
 }

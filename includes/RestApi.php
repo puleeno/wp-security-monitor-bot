@@ -39,17 +39,17 @@ class RestApi extends WP_REST_Controller
                 'callback' => [$this, 'getIssues'],
                 'permission_callback' => [$this, 'checkPermissions'],
             ],
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'bulkUpdateIssues'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
         ]);
 
         register_rest_route($this->namespace, '/issues/(?P<id>\d+)/viewed', [
             [
                 'methods' => WP_REST_Server::CREATABLE,
                 'callback' => [$this, 'markAsViewed'],
-                'permission_callback' => [$this, 'checkPermissions'],
-            ],
-            [
-                'methods' => WP_REST_Server::DELETABLE,
-                'callback' => [$this, 'unmarkAsViewed'],
                 'permission_callback' => [$this, 'checkPermissions'],
             ],
         ]);
@@ -159,6 +159,55 @@ class RestApi extends WP_REST_Controller
                 'permission_callback' => [$this, 'checkPermissions'],
             ],
         ]);
+
+        // Approve redirect by domain name
+        register_rest_route($this->namespace, '/redirects/(?P<domain>[a-zA-Z0-9\-\.]+)/approve', [
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'approveRedirectByDomain'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
+
+        // Reject redirect by domain name
+        register_rest_route($this->namespace, '/redirects/(?P<domain>[a-zA-Z0-9\-\.]+)/reject', [
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'rejectRedirectByDomain'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
+
+        // Bot control endpoints
+        register_rest_route($this->namespace, '/bot/start', [
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'startBot'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
+
+        register_rest_route($this->namespace, '/bot/stop', [
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'stopBot'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
+
+        // Issuer config endpoints
+        register_rest_route($this->namespace, '/issuers/config', [
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [$this, 'getIssuersConfig'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'updateIssuersConfig'],
+                'permission_callback' => [$this, 'checkPermissions'],
+            ],
+        ]);
     }
 
     /**
@@ -171,6 +220,12 @@ class RestApi extends WP_REST_Controller
         return current_user_can('manage_options');
     }
 
+    private function checkDeletePermissions(): bool
+    {
+        // Chỉ admin (manage_options) mới được xóa issues
+        return current_user_can('manage_options');
+    }
+
     /**
      * Get issues
      *
@@ -179,6 +234,7 @@ class RestApi extends WP_REST_Controller
      */
     public function getIssues(WP_REST_Request $request)
     {
+        $this->sendNoCacheHeaders();
         $page = $request->get_param('page') ?? 1;
         $per_page = $request->get_param('per_page') ?? 20;
         $status = $request->get_param('status') ?? '';
@@ -193,11 +249,132 @@ class RestApi extends WP_REST_Controller
             'severity' => $severity,
             'issuer' => $issuer,
             'search' => $search,
+            // Hiển thị cả issues ở plugin (để không bị lọc nhầm)
+            'include_plugin_files' => true,
+            // Bao gồm cả ignored nếu UI không filter riêng
+            'include_ignored' => true,
         ];
 
         $result = $this->issueManager->getIssues($args);
 
         return new WP_REST_Response($result, 200);
+    }
+
+    /**
+     * Bulk update issues: actions = mark_viewed, unmark_viewed, ignore, resolve, delete
+     */
+    public function bulkUpdateIssues(WP_REST_Request $request)
+    {
+        $this->sendNoCacheHeaders();
+        $params = $request->get_json_params();
+        $ids = array_map('intval', $params['ids'] ?? []);
+        $action = sanitize_text_field($params['action'] ?? '');
+        $notes = sanitize_textarea_field($params['notes'] ?? '');
+
+        if (empty($ids) || empty($action)) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'Thiếu ids hoặc action',
+            ], 400);
+        }
+
+        $manager = $this->issueManager;
+        $results = [
+            'processed' => 0,
+            'failed' => 0,
+            'skipped' => 0,
+            'errors' => [],
+        ];
+
+        foreach ($ids as $id) {
+            // Skip if issue already processed (viewed/ignored/resolved)
+            $issueRow = $this->getIssueRow($id);
+            if (!$issueRow) {
+                $results['failed']++;
+                $results['errors'][] = [ 'id' => $id, 'error' => 'Issue không tồn tại' ];
+                continue;
+            }
+
+            $isProcessed = ((int)($issueRow['viewed'] ?? 0) === 1)
+                || ((int)($issueRow['is_ignored'] ?? 0) === 1)
+                || in_array(($issueRow['status'] ?? ''), ['resolved', 'ignored'], true);
+
+            $ok = false;
+            switch ($action) {
+                case 'mark_viewed':
+                    if ($isProcessed) { $results['skipped']++; break; }
+                    $ok = $manager->markAsViewed($id);
+                    break;
+                case 'unmark_viewed':
+                    // flow unmark đã loại bỏ - coi như skip
+                    $results['skipped']++;
+                    $ok = false;
+                    break;
+                case 'ignore':
+                    if ($isProcessed) { $results['skipped']++; break; }
+                    $ok = $manager->ignoreIssue($id, $notes ?: 'Ignored via bulk action');
+                    break;
+                case 'resolve':
+                    if ($isProcessed) { $results['skipped']++; break; }
+                    $ok = $manager->resolveIssue($id, $notes ?: 'Resolved via bulk action');
+                    break;
+                case 'delete':
+                    if (!$this->checkDeletePermissions()) {
+                        $results['failed']++;
+                        $results['errors'][] = [ 'id' => $id, 'error' => 'Không có quyền xóa' ];
+                        continue 2;
+                    }
+                    $ok = $this->deleteIssue($id);
+                    break;
+                default:
+                    return new WP_REST_Response([
+                        'success' => false,
+                        'message' => 'Action không hợp lệ',
+                    ], 400);
+            }
+
+            if ($ok) {
+                $results['processed']++;
+            } else {
+                $results['failed']++;
+                $results['errors'][] = [ 'id' => $id, 'error' => 'Thao tác thất bại' ];
+            }
+        }
+
+        return new WP_REST_Response([
+            'success' => true,
+            'result' => $results,
+        ], 200);
+    }
+
+    private function deleteIssue(int $issueId): bool
+    {
+        global $wpdb;
+        $issuesTable = $wpdb->prefix . \Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_ISSUES;
+        $notificationsTable = $wpdb->prefix . \Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_NOTIFICATIONS;
+
+        // Xóa notifications liên quan trước nếu table tồn tại (phòng khi FK chưa được tạo)
+        try {
+            if (\Puleeno\SecurityBot\WebMonitor\Database\Schema::tableExists(\Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_NOTIFICATIONS)) {
+                $wpdb->delete($notificationsTable, [ 'issue_id' => $issueId ], [ '%d' ]);
+            }
+        } catch (\Exception $e) {
+            // bỏ qua lỗi khi xóa notifications để không chặn xóa issue
+        }
+
+        // Xóa issue
+        $wpdb->delete($issuesTable, [ 'id' => $issueId ], [ '%d' ]);
+        return (int)$wpdb->rows_affected > 0;
+    }
+
+    private function getIssueRow(int $issueId)
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . \Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_ISSUES;
+        return $wpdb->get_row($wpdb->prepare(
+            "SELECT id, viewed, is_ignored, status FROM {$table} WHERE id = %d",
+            $issueId
+        ), ARRAY_A);
     }
 
     /**
@@ -260,8 +437,11 @@ class RestApi extends WP_REST_Controller
      */
     public function ignoreIssue(WP_REST_Request $request)
     {
+        $this->sendNoCacheHeaders();
         $issueId = (int) $request->get_param('id');
-        $reason = sanitize_textarea_field($request->get_param('reason') ?? '');
+        // Một số host trả 415 khi body JSON; chấp nhận cả form/body rỗng
+        $reasonParam = $request->get_param('reason');
+        $reason = is_string($reasonParam) ? sanitize_textarea_field($reasonParam) : '';
 
         if (!$issueId) {
             return new WP_Error('invalid_id', 'Invalid issue ID', ['status' => 400]);
@@ -287,8 +467,10 @@ class RestApi extends WP_REST_Controller
      */
     public function resolveIssue(WP_REST_Request $request)
     {
+        $this->sendNoCacheHeaders();
         $issueId = (int) $request->get_param('id');
-        $notes = sanitize_textarea_field($request->get_param('notes') ?? '');
+        $notesParam = $request->get_param('notes');
+        $notes = is_string($notesParam) ? sanitize_textarea_field($notesParam) : '';
 
         if (!$issueId) {
             return new WP_Error('invalid_id', 'Invalid issue ID', ['status' => 400]);
@@ -802,7 +984,83 @@ class RestApi extends WP_REST_Controller
     public function rejectRedirect(WP_REST_Request $request)
     {
         global $wpdb;
-        $domain = $request->get_param('id'); // Actually domain name
+        $id = $request->get_param('id'); // Numeric ID
+        $reason = sanitize_textarea_field($request->get_param('reason') ?? '');
+        $table = $wpdb->prefix . 'security_monitor_redirect_domains';
+
+        $updated = $wpdb->update(
+            $table,
+            [
+                'status' => 'rejected',
+                'reject_reason' => $reason,
+                'rejected_by' => get_current_user_id(),
+                'rejected_at' => current_time('mysql')
+            ],
+            ['id' => $id],
+            ['%s', '%s', '%d', '%s'],
+            ['%d']
+        );
+
+        if ($updated) {
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Domain rejected successfully',
+            ], 200);
+        }
+
+        return new WP_REST_Response([
+            'success' => false,
+            'message' => 'Failed to reject domain',
+        ], 200);
+    }
+
+    /**
+     * Approve redirect by domain name
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function approveRedirectByDomain(WP_REST_Request $request)
+    {
+        global $wpdb;
+        $domain = $request->get_param('domain');
+        $table = $wpdb->prefix . 'security_monitor_redirect_domains';
+
+        $updated = $wpdb->update(
+            $table,
+            [
+                'status' => 'approved',
+                'approved_by' => get_current_user_id(),
+                'approved_at' => current_time('mysql')
+            ],
+            ['domain' => $domain],
+            ['%s', '%d', '%s'],
+            ['%s']
+        );
+
+        if ($updated) {
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => sprintf('Domain "%s" approved successfully', $domain),
+            ], 200);
+        }
+
+        return new WP_REST_Response([
+            'success' => false,
+            'message' => sprintf('Failed to approve domain "%s". Domain may not exist.', $domain),
+        ], 400);
+    }
+
+    /**
+     * Reject redirect by domain name
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function rejectRedirectByDomain(WP_REST_Request $request)
+    {
+        global $wpdb;
+        $domain = $request->get_param('domain');
         $reason = sanitize_textarea_field($request->get_param('reason') ?? '');
         $table = $wpdb->prefix . 'security_monitor_redirect_domains';
 
@@ -822,14 +1080,175 @@ class RestApi extends WP_REST_Controller
         if ($updated) {
             return new WP_REST_Response([
                 'success' => true,
-                'message' => 'Domain rejected successfully',
+                'message' => sprintf('Domain "%s" rejected successfully', $domain),
             ], 200);
         }
 
         return new WP_REST_Response([
             'success' => false,
-            'message' => 'Failed to reject domain',
+            'message' => sprintf('Failed to reject domain "%s". Domain may not exist.', $domain),
+        ], 400);
+    }
+
+    /**
+     * Start bot
+     *
+     * @return WP_REST_Response
+     */
+    public function startBot()
+    {
+        try {
+            $bot = Bot::getInstance();
+
+            if ($bot->isRunning()) {
+                return new WP_REST_Response([
+                    'success' => true,
+                    'message' => 'Bot đã đang chạy rồi',
+                    'is_running' => true,
+                ], 200);
+            }
+
+            $bot->start();
+
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Security Monitor Bot đã được khởi động thành công',
+                'is_running' => true,
+            ], 200);
+        } catch (\Exception $e) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'Lỗi khi khởi động bot: ' . $e->getMessage(),
+                'is_running' => false,
+            ], 200);
+        }
+    }
+
+    /**
+     * Stop bot
+     *
+     * @return WP_REST_Response
+     */
+    public function stopBot()
+    {
+        try {
+            $bot = Bot::getInstance();
+
+            if (!$bot->isRunning()) {
+                return new WP_REST_Response([
+                    'success' => true,
+                    'message' => 'Bot đã dừng rồi',
+                    'is_running' => false,
+                ], 200);
+            }
+
+            $bot->stop();
+
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Security Monitor Bot đã được dừng',
+                'is_running' => false,
+            ], 200);
+        } catch (\Exception $e) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'Lỗi khi dừng bot: ' . $e->getMessage(),
+                'is_running' => true,
+            ], 200);
+        }
+    }
+
+    /**
+     * Get issuers config
+     *
+     * @return WP_REST_Response
+     */
+    public function getIssuersConfig()
+    {
+        $config = get_option('wp_security_monitor_issuers_config', []);
+
+        // Default configs cho các issuers
+        $defaults = [
+            'fatal_error' => [
+                'enabled' => true,
+                'monitor_levels' => ['error', 'warning'],
+            ],
+            'plugin_theme_upload' => [
+                'enabled' => true,
+                'max_files_per_scan' => 100,
+                'max_file_size' => 1048576,
+                'block_suspicious_uploads' => true,
+            ],
+            'performance_monitor' => [
+                'enabled' => true,
+                'threshold' => 30,
+                'memory_threshold' => 134217728,
+                'track_queries' => true,
+            ],
+        ];
+
+        // Merge với defaults
+        $config = array_merge($defaults, $config);
+
+        return new WP_REST_Response([
+            'config' => $config,
+            'savequeries_enabled' => defined('SAVEQUERIES') && SAVEQUERIES,
         ], 200);
+    }
+
+    /**
+     * Update issuers config
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function updateIssuersConfig(WP_REST_Request $request)
+    {
+        $newConfig = $request->get_json_params();
+
+        if (empty($newConfig)) {
+            return new WP_REST_Response([
+                'success' => false,
+                'message' => 'No config data provided',
+            ], 400);
+        }
+
+        // Get current config
+        $currentConfig = get_option('wp_security_monitor_issuers_config', []);
+
+        // Merge với config mới
+        $updatedConfig = array_merge($currentConfig, $newConfig);
+
+        // Save config
+        update_option('wp_security_monitor_issuers_config', $updatedConfig);
+
+        return new WP_REST_Response([
+            'success' => true,
+            'message' => 'Issuer config updated successfully',
+            'config' => $updatedConfig,
+        ], 200);
+    }
+
+    /**
+     * Gửi header no-cache để tránh CDN/host cache REST responses
+     */
+    private function sendNoCacheHeaders(): void
+    {
+        if (function_exists('nocache_headers')) {
+            nocache_headers();
+        }
+        if (function_exists('rest_get_server')) {
+            $server = rest_get_server();
+            if ($server) {
+                $server->send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+                $server->send_header('Pragma', 'no-cache');
+                $server->send_header('Expires', 'Wed, 11 Jan 1984 05:00:00 GMT');
+            }
+        } else {
+            @header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+            @header('Pragma: no-cache');
+            @header('Expires: Wed, 11 Jan 1984 05:00:00 GMT');
+        }
     }
 }
 

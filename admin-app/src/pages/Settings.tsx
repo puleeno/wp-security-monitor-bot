@@ -1,14 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import {
   Card, Form, Input, Switch, Button, Space, Divider, Typography,
-  Row, Col, Alert, Tabs
+  Row, Col, Alert, Tabs, Select, InputNumber, Checkbox
 } from 'antd';
 import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { ajax } from 'rxjs/ajax';
 import type { RootState, AppDispatch } from '../store';
-import { fetchSettings, updateSettings } from '../reducers/settingsReducer';
+import {
+  fetchSettings,
+  updateSettings,
+  fetchIssuersConfig,
+  updateIssuersConfig,
+} from '../reducers/settingsReducer';
 import { addNotification } from '../reducers/uiReducer';
 import { buildUrl, getApiHeaders } from '../services/api';
 import PageLoading from '../components/Loading/PageLoading';
@@ -21,12 +26,14 @@ const Settings: React.FC = () => {
   const { t } = useTranslation();
   const settingsState = useSelector((state: RootState) => state.settings);
   const [form] = Form.useForm();
+  const [issuersForm] = Form.useForm();
   const [initialLoading, setInitialLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [testingChannel, setTestingChannel] = useState<string | null>(null);
 
   useEffect(() => {
     dispatch(fetchSettings());
+    dispatch(fetchIssuersConfig());
   }, [dispatch]);
 
   // Update form khi settings load
@@ -45,6 +52,13 @@ const Settings: React.FC = () => {
       setInitialLoading(false);
     }
   }, [settingsState, form]);
+
+  // Update issuers form khi config load
+  useEffect(() => {
+    if (settingsState.issuers) {
+      issuersForm.setFieldsValue(settingsState.issuers);
+    }
+  }, [settingsState.issuers, issuersForm]);
 
   const handleSave = () => {
     form.validateFields().then((values) => {
@@ -79,6 +93,14 @@ const Settings: React.FC = () => {
 
   const handleReset = () => {
     dispatch(fetchSettings());
+    dispatch(fetchIssuersConfig());
+  };
+
+  const handleSaveIssuers = () => {
+    issuersForm.validateFields().then((values) => {
+      setIsSaving(true);
+      dispatch(updateIssuersConfig(values));
+    });
   };
 
   const handleTestChannel = async (channel: string) => {
@@ -417,6 +439,241 @@ const Settings: React.FC = () => {
                 showIcon
               />
             </Card>
+          </Tabs.TabPane>
+
+          {/* Security Monitors Tab */}
+          <Tabs.TabPane tab="🔍 Security Monitors" key="monitors">
+            <Form
+              form={issuersForm}
+              layout="vertical"
+              disabled={isSaving}
+            >
+              {/* Performance Monitor */}
+              <Card title="⚡ Performance Monitor" style={{ marginBottom: 16 }}>
+                <Form.Item name={['performance_monitor', 'enabled']} valuePropName="checked" noStyle>
+                  <Switch />
+                </Form.Item>
+                <Text strong style={{ marginLeft: 12 }}>Enable Performance Monitoring</Text>
+
+                <Divider />
+
+                <Form.Item noStyle shouldUpdate>
+                  {() => {
+                    const enabled = issuersForm.getFieldValue(['performance_monitor', 'enabled']);
+                    return (
+                      <>
+                        <Row gutter={16}>
+                          <Col span={12}>
+                            <Form.Item
+                              label="⏱️ Execution Time Threshold (seconds)"
+                              name={['performance_monitor', 'threshold']}
+                              tooltip="Cảnh báo khi request xử lý vượt quá thời gian này"
+                            >
+                              <InputNumber
+                                min={5}
+                                max={300}
+                                style={{ width: '100%' }}
+                                disabled={!enabled}
+                                placeholder="30"
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item
+                              label="💾 Memory Threshold (MB)"
+                              name={['performance_monitor', 'memory_threshold']}
+                              tooltip="Cảnh báo khi memory usage vượt quá giá trị này"
+                              getValueFromEvent={(value) => value * 1048576}
+                              getValueProps={(value) => ({ value: value ? value / 1048576 : 128 })}
+                            >
+                              <InputNumber
+                                min={32}
+                                max={512}
+                                style={{ width: '100%' }}
+                                disabled={!enabled}
+                                placeholder="128"
+                              />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+
+                        <Form.Item
+                          name={['performance_monitor', 'track_queries']}
+                          valuePropName="checked"
+                        >
+                          <Checkbox disabled={!enabled}>
+                            Track slow SQL queries (&gt;1s)
+                          </Checkbox>
+                        </Form.Item>
+
+                        {!settingsState.savequeriesEnabled && (
+                          <Alert
+                            message="⚠️ SAVEQUERIES chưa được bật"
+                            description={
+                              <div>
+                                <p>Để track slow SQL queries, cần thêm vào wp-config.php:</p>
+                                <pre style={{ background: '#f5f5f5', padding: 8 }}>
+                                  define('SAVEQUERIES', true);
+                                </pre>
+                                <p style={{ marginTop: 8 }}>
+                                  Đặt TRƯỚC dòng: <code>require_once ABSPATH . 'wp-settings.php';</code>
+                                </p>
+                              </div>
+                            }
+                            type="warning"
+                            showIcon
+                          />
+                        )}
+                      </>
+                    );
+                  }}
+                </Form.Item>
+
+                <Divider />
+
+                <Button type="primary" onClick={handleSaveIssuers} loading={isSaving}>
+                  Save Performance Settings
+                </Button>
+              </Card>
+
+              {/* Fatal Error Monitor */}
+              <Card title="🚨 Fatal Error Monitor" style={{ marginBottom: 16 }}>
+                <Form.Item name={['fatal_error', 'enabled']} valuePropName="checked" noStyle>
+                  <Switch />
+                </Form.Item>
+                <Text strong style={{ marginLeft: 12 }}>Enable Fatal Error Monitoring</Text>
+
+                <Divider />
+
+                <Form.Item noStyle shouldUpdate>
+                  {() => {
+                    const enabled = issuersForm.getFieldValue(['fatal_error', 'enabled']);
+                    return (
+                      <>
+                        <Form.Item
+                          label="📊 Monitor Levels"
+                          name={['fatal_error', 'monitor_levels']}
+                          tooltip="Chọn các error levels cần monitoring"
+                        >
+                          <Select
+                            mode="multiple"
+                            disabled={!enabled}
+                            options={[
+                              { value: 'error', label: '🔴 Errors' },
+                              { value: 'warning', label: '🟡 Warnings' },
+                              { value: 'notice', label: '🔵 Notices' },
+                            ]}
+                            placeholder="Chọn levels"
+                          />
+                        </Form.Item>
+
+                        <Alert
+                          message="Fatal Error Monitoring"
+                          description="Monitor sẽ hook vào WordPress error handler và gửi alert realtime khi có fatal errors, warnings, hoặc notices."
+                          type="info"
+                          showIcon
+                        />
+                      </>
+                    );
+                  }}
+                </Form.Item>
+
+                <Divider />
+
+                <Button type="primary" onClick={handleSaveIssuers} loading={isSaving}>
+                  Save Error Monitor Settings
+                </Button>
+              </Card>
+
+              {/* Plugin/Theme Upload Scanner */}
+              <Card title="☠️ Malware Upload Scanner">
+                <Form.Item name={['plugin_theme_upload', 'enabled']} valuePropName="checked" noStyle>
+                  <Switch />
+                </Form.Item>
+                <Text strong style={{ marginLeft: 12 }}>Enable Plugin/Theme Upload Scanner</Text>
+
+                <Divider />
+
+                <Form.Item noStyle shouldUpdate>
+                  {() => {
+                    const enabled = issuersForm.getFieldValue(['plugin_theme_upload', 'enabled']);
+                    return (
+                      <>
+                        <Row gutter={16}>
+                          <Col span={12}>
+                            <Form.Item
+                              label="📁 Max Files Per Scan"
+                              name={['plugin_theme_upload', 'max_files_per_scan']}
+                            >
+                              <InputNumber
+                                min={10}
+                                max={500}
+                                style={{ width: '100%' }}
+                                disabled={!enabled}
+                                placeholder="100"
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col span={12}>
+                            <Form.Item
+                              label="💾 Max File Size (MB)"
+                              name={['plugin_theme_upload', 'max_file_size']}
+                              getValueFromEvent={(value) => value * 1048576}
+                              getValueProps={(value) => ({ value: value ? value / 1048576 : 1 })}
+                            >
+                              <InputNumber
+                                min={0.5}
+                                max={10}
+                                step={0.5}
+                                style={{ width: '100%' }}
+                                disabled={!enabled}
+                                placeholder="1"
+                              />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+
+                        <Form.Item
+                          name={['plugin_theme_upload', 'block_suspicious_uploads']}
+                          valuePropName="checked"
+                        >
+                          <Checkbox disabled={!enabled}>
+                            🛑 Block suspicious file uploads
+                          </Checkbox>
+                        </Form.Item>
+
+                        <Alert
+                          message="Malware Detection Patterns"
+                          description={
+                            <div>
+                              <p>Scanner sẽ phát hiện 23+ malicious patterns:</p>
+                              <ul style={{ marginLeft: 20, marginTop: 8 }}>
+                                <li>error_reporting(0), set_time_limit(0)</li>
+                                <li>str_rot13, base64_decode</li>
+                                <li>eval(), system(), exec(), shell_exec</li>
+                                <li>Direct $_GET/$_POST access</li>
+                                <li>và nhiều patterns khác...</li>
+                              </ul>
+                              <p style={{ marginTop: 8 }}>
+                                Nếu phát hiện, file upload sẽ bị <strong>BLOCK</strong> và gửi alert ngay lập tức.
+                              </p>
+                            </div>
+                          }
+                          type="warning"
+                          showIcon
+                        />
+                      </>
+                    );
+                  }}
+                </Form.Item>
+
+                <Divider />
+
+                <Button type="primary" onClick={handleSaveIssuers} loading={isSaving}>
+                  Save Scanner Settings
+                </Button>
+              </Card>
+            </Form>
           </Tabs.TabPane>
         </Tabs>
 
