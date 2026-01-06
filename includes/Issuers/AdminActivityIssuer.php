@@ -40,7 +40,7 @@ class AdminActivityIssuer implements RealtimeIssuerInterface
         // Monitor widget changes via options
         add_action('updated_option', [$this, 'logWidgetChanges'], 10, 3);
         add_action('added_option', [$this, 'logWidgetDeepChanges'], 10, 2);
-        add_action('deleted_option', [$this, 'logWidgetDeepChanges'], 10, 2);
+        add_action('deleted_option', [$this, 'logWidgetDeepChanges'], 10, 1);
     }
 
     public function getName(): string
@@ -244,7 +244,7 @@ class AdminActivityIssuer implements RealtimeIssuerInterface
         }
     }
 
-    public function logWidgetDeepChanges($option, $value)
+    public function logWidgetDeepChanges($option, $value = null)
     {
         if (strpos($option, 'widget_') === 0) {
             $action = current_action() === 'added_option' ? 'Added' : 'Deleted';
