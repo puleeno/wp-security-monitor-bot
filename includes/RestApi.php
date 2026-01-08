@@ -518,15 +518,18 @@ class RestApi extends WP_REST_Controller
      */
     public function getSettings()
     {
+        $this->sendNoCacheHeaders();
         // Load settings từ WordPress options và CredentialManager
         $settings = [
             'telegram' => [
                 'enabled' => (bool) get_option('wp_security_monitor_telegram_enabled', false),
                 'bot_token' => CredentialManager::getCredential(
-                    CredentialManager::TYPE_TELEGRAM_TOKEN
+                    CredentialManager::TYPE_TELEGRAM_TOKEN,
+                    false // Tắt track usage khi load settings UI
                 ) ?? '',
                 'chat_id' => CredentialManager::getCredential(
-                    CredentialManager::TYPE_TELEGRAM_CHAT_ID
+                    CredentialManager::TYPE_TELEGRAM_CHAT_ID,
+                    false // Tắt track usage khi load settings UI
                 ) ?? '',
             ],
             'email' => [
@@ -536,7 +539,8 @@ class RestApi extends WP_REST_Controller
             'slack' => [
                 'enabled' => (bool) get_option('wp_security_monitor_slack_enabled', false),
                 'webhook_url' => CredentialManager::getCredential(
-                    CredentialManager::TYPE_SLACK_WEBHOOK
+                    CredentialManager::TYPE_SLACK_WEBHOOK,
+                    false // Tắt track usage khi load settings UI
                 ) ?? '',
             ],
             'log' => [
@@ -555,6 +559,7 @@ class RestApi extends WP_REST_Controller
      */
     public function updateSettings(WP_REST_Request $request)
     {
+        $this->sendNoCacheHeaders();
         $settings = $request->get_json_params();
 
         // Update Telegram settings
@@ -1165,6 +1170,7 @@ class RestApi extends WP_REST_Controller
      */
     public function getIssuersConfig()
     {
+        $this->sendNoCacheHeaders();
         $config = get_option('wp_security_monitor_issuers_config', []);
 
         // Default configs cho các issuers
@@ -1204,6 +1210,7 @@ class RestApi extends WP_REST_Controller
      */
     public function updateIssuersConfig(WP_REST_Request $request)
     {
+        $this->sendNoCacheHeaders();
         $newConfig = $request->get_json_params();
 
         if (empty($newConfig)) {
