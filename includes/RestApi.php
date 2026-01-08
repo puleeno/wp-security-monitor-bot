@@ -291,18 +291,21 @@ class RestApi extends WP_REST_Controller
             $issueRow = $this->getIssueRow($id);
             if (!$issueRow) {
                 $results['failed']++;
-                $results['errors'][] = [ 'id' => $id, 'error' => 'Issue không tồn tại' ];
+                $results['errors'][] = ['id' => $id, 'error' => 'Issue không tồn tại'];
                 continue;
             }
 
-            $isProcessed = ((int)($issueRow['viewed'] ?? 0) === 1)
-                || ((int)($issueRow['is_ignored'] ?? 0) === 1)
+            $isProcessed = ((int) ($issueRow['viewed'] ?? 0) === 1)
+                || ((int) ($issueRow['is_ignored'] ?? 0) === 1)
                 || in_array(($issueRow['status'] ?? ''), ['resolved', 'ignored'], true);
 
             $ok = false;
             switch ($action) {
                 case 'mark_viewed':
-                    if ($isProcessed) { $results['skipped']++; break; }
+                    if ($isProcessed) {
+                        $results['skipped']++;
+                        break;
+                    }
                     $ok = $manager->markAsViewed($id);
                     break;
                 case 'unmark_viewed':
@@ -311,17 +314,23 @@ class RestApi extends WP_REST_Controller
                     $ok = false;
                     break;
                 case 'ignore':
-                    if ($isProcessed) { $results['skipped']++; break; }
+                    if ($isProcessed) {
+                        $results['skipped']++;
+                        break;
+                    }
                     $ok = $manager->ignoreIssue($id, $notes ?: 'Ignored via bulk action');
                     break;
                 case 'resolve':
-                    if ($isProcessed) { $results['skipped']++; break; }
+                    if ($isProcessed) {
+                        $results['skipped']++;
+                        break;
+                    }
                     $ok = $manager->resolveIssue($id, $notes ?: 'Resolved via bulk action');
                     break;
                 case 'delete':
                     if (!$this->checkDeletePermissions()) {
                         $results['failed']++;
-                        $results['errors'][] = [ 'id' => $id, 'error' => 'Không có quyền xóa' ];
+                        $results['errors'][] = ['id' => $id, 'error' => 'Không có quyền xóa'];
                         continue 2;
                     }
                     $ok = $this->deleteIssue($id);
@@ -337,7 +346,7 @@ class RestApi extends WP_REST_Controller
                 $results['processed']++;
             } else {
                 $results['failed']++;
-                $results['errors'][] = [ 'id' => $id, 'error' => 'Thao tác thất bại' ];
+                $results['errors'][] = ['id' => $id, 'error' => 'Thao tác thất bại'];
             }
         }
 
@@ -356,15 +365,15 @@ class RestApi extends WP_REST_Controller
         // Xóa notifications liên quan trước nếu table tồn tại (phòng khi FK chưa được tạo)
         try {
             if (\Puleeno\SecurityBot\WebMonitor\Database\Schema::tableExists(\Puleeno\SecurityBot\WebMonitor\Database\Schema::TABLE_NOTIFICATIONS)) {
-                $wpdb->delete($notificationsTable, [ 'issue_id' => $issueId ], [ '%d' ]);
+                $wpdb->delete($notificationsTable, ['issue_id' => $issueId], ['%d']);
             }
         } catch (\Exception $e) {
             // bỏ qua lỗi khi xóa notifications để không chặn xóa issue
         }
 
         // Xóa issue
-        $wpdb->delete($issuesTable, [ 'id' => $issueId ], [ '%d' ]);
-        return (int)$wpdb->rows_affected > 0;
+        $wpdb->delete($issuesTable, ['id' => $issueId], ['%d']);
+        return (int) $wpdb->rows_affected > 0;
     }
 
     private function getIssueRow(int $issueId)
@@ -495,6 +504,7 @@ class RestApi extends WP_REST_Controller
      */
     public function getSecurityStats()
     {
+        $this->sendNoCacheHeaders();
         $stats = $this->issueManager->getStats();
         return new WP_REST_Response($stats, 200);
     }
@@ -506,6 +516,7 @@ class RestApi extends WP_REST_Controller
      */
     public function getBotStats()
     {
+        $this->sendNoCacheHeaders();
         $bot = Bot::getInstance();
         $stats = $bot->getStats();
         return new WP_REST_Response($stats, 200);
@@ -874,7 +885,7 @@ class RestApi extends WP_REST_Controller
         }
 
         // Sort by version (newest first)
-        usort($changelog, function($a, $b) {
+        usort($changelog, function ($a, $b) {
             return version_compare($b['version'], $a['version']);
         });
 
@@ -1102,6 +1113,7 @@ class RestApi extends WP_REST_Controller
      */
     public function startBot()
     {
+        $this->sendNoCacheHeaders();
         try {
             $bot = Bot::getInstance();
 
@@ -1136,6 +1148,7 @@ class RestApi extends WP_REST_Controller
      */
     public function stopBot()
     {
+        $this->sendNoCacheHeaders();
         try {
             $bot = Bot::getInstance();
 
@@ -1244,17 +1257,25 @@ class RestApi extends WP_REST_Controller
         if (function_exists('nocache_headers')) {
             nocache_headers();
         }
+
+        // LiteSpeed Cache specific: Disable caching for this request
+        if (defined('LSCWP_V') || defined('LSCWP_BASENAME')) {
+            do_action('litespeed_control_set_nocache');
+        }
+
         if (function_exists('rest_get_server')) {
             $server = rest_get_server();
             if ($server) {
                 $server->send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
                 $server->send_header('Pragma', 'no-cache');
                 $server->send_header('Expires', 'Wed, 11 Jan 1984 05:00:00 GMT');
+                $server->send_header('X-LiteSpeed-Cache-Control', 'no-cache');
             }
         } else {
             @header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
             @header('Pragma: no-cache');
             @header('Expires: Wed, 11 Jan 1984 05:00:00 GMT');
+            @header('X-LiteSpeed-Cache-Control: no-cache');
         }
     }
 }
